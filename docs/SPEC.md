@@ -431,6 +431,79 @@ Design reference: `docs/design/inspect-report-sample.html` is a sample with fict
 
 Files in, report out. Areas of the gap review: which agents exist and what they can do; who may approve what; what happens when nobody answers; how the rules change; what record exists. Scoring is rule-based with three levels per area. Gap rules over a draft `ritvo.yaml`: no named approver; owner can approve own agent; no escalation path; no approval expiry; policy change with no second person; high tier set to allow; shared keys; unattended agent with no owner.
 
+### 8.1 Gap review
+
+`ritvo review <answers.yaml>` reads a file of answers to 15 fixed questions, three per area, scores each area, and writes a one-page result. It reads one file, makes no network calls and holds no credential.
+
+Levels, used for each question and each area:
+
+| Level | Meaning |
+| --- | --- |
+| `gap` | The control is missing, or nobody knows whether it exists |
+| `partial` | The control exists for some agents or some of the time, or informally |
+| `in_place` | The control exists, is written down and applies to every agent |
+
+An unanswered question is `not_answered`. It is never scored as `in_place`.
+
+Questions. Every question also accepts `unknown`, which scores `gap`.
+
+| ID | Question | `gap` | `partial` | `in_place` |
+| --- | --- | --- | --- | --- |
+| **Agents and what they can do** | | | | |
+| `agents.inventory` | Is there a list of every AI agent in use, including those built outside the central IT or platform team? | `none` | `partial` | `complete` |
+| `agents.owner` | Does every agent have a named person who is accountable for it? | `none` | `some` | `all` |
+| `agents.reach` | For each agent, is it written down which tools and data it may use, and which of its actions are high risk? | `none` | `some` | `all` |
+| **Who may approve what** | | | | |
+| `approval.named` | When an agent needs approval for something outside its normal permissions, who decides? | `no_one` | `informal` | `named_role` |
+| `approval.self` | Can an agent's owner, or the person the agent acts for, approve that agent's own request? | `yes` | `not_prevented` | `prevented` |
+| `approval.context` | When someone approves, do they see exactly what they are approving: the agent, the person it acts for, the tool and the parameters? | `no` | `partly` | `yes` |
+| **What happens when nobody answers** | | | | |
+| `escalation.path` | If the approver does not respond, does the request move to someone else? | `no` | `ad_hoc` | `defined` |
+| `escalation.expiry` | Do approvals expire, and are they tied to the one request they approve? | `no` | `some` | `all` |
+| `escalation.waiting` | While a request waits for a decision, what does the agent do? | `proceeds` | `held_no_rule` | `rule_by_risk` |
+| **How the rules change** | | | | |
+| `policy_change.second_person` | Does a change to an agent's permissions need approval from someone other than its author? | `no` | `sometimes` | `always` |
+| `policy_change.owners` | Does a change that affects a team's systems need that team's sign-off? | `no` | `informal` | `required` |
+| `policy_change.versioning` | Can you say which version of the rules was in force when a given decision was made? | `no` | `partly` | `yes` |
+| **What record exists** | | | | |
+| `record.decisions` | Is every approval and refusal recorded with who decided, when and why? | `no` | `partly` | `yes` |
+| `record.tamper` | Could the record be changed or deleted without anyone noticing? | `yes` | `logged` | `no` |
+| `record.identity` | Does the record show both the agent and the person it acted for, with a distinct identity for each agent? | `no` | `agent_only` | `both` |
+
+Answer values use these option IDs. For `record.tamper`, `logged` means changes are possible but are themselves logged; `no` means the record is append-only or tamper-evident.
+
+Answers file:
+
+```yaml
+review_version: 0
+organisation: Example Logistics Ltd   # optional; shown on the result
+answers:
+  agents.inventory: partial
+  agents.owner: some
+  approval.self: not_prevented
+  # questions left out are not_answered
+notes:                                # optional, one line per question
+  agents.owner: Finance agents have owners; support agents do not.
+```
+
+Validation: `review_version` MUST be `0`. An unknown question ID or option ID is an error that names the valid IDs, and nothing is written. An omitted question is `not_answered`.
+
+Scoring, per area:
+
+1. If no question in the area is answered, the area is `not_answered`.
+2. Otherwise the area takes the lowest level among its answered questions: one gap makes the area a gap.
+3. If some questions in the area are unanswered, the area cannot be `in_place`: it is capped at `partial` and marked incomplete with the number answered.
+
+There is no total score across areas.
+
+Output:
+
+- `review.html` beside the answers file, or at `--out`. It is one self-contained file under the same rules as the inspect report (section 7.2): inline styles, the system font stack, no network requests, light and dark themes, every level shown with a label and a shape as well as colour, and a print stylesheet that fits one page.
+- It shows the organisation, the date, the SHA-256 of the answers file, the five areas with their levels, and for each question scored `gap`, `partial` or `not_answered`: the answer given, why it matters, and a next step. It states that the answers are self-reported and that the result is not a conformity assessment.
+- It MUST NOT contain the answers file's path. Notes are shown as plain text, escaped.
+- The terminal prints one line per area with its level and the path of the written file.
+- Exit status: 0 when the result is written, whatever the levels; non-zero when the answers file is invalid.
+
 ## 9. Security requirements
 
 - Tokens: validate issuer, audience and expiry; never store or forward a raw token; one hop, one token.
