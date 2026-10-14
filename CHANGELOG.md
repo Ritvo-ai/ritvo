@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Project governance: licence, notice, security policy, contributing guide, code of conduct, governance, support and trademark pages.
 - Product requirements (`docs/PRD.md`), technical specification (`docs/SPEC.md`) and the first decision record, on why Ritvo sits below gateways.
 - Python package skeleton with the `ritvo` CLI entry point (`ritvo --version`).
+- Specification of the authority gap review (`docs/SPEC.md` section 8.1): 15 questions in five areas, the answers file, scoring and the one-page result.
 - Continuous integration on Linux, macOS and Windows: lint, type check, tests, licence check, secret scan, wheel build and install test, CodeQL, and commit hygiene.
 - Release workflow: on a `v*` tag, test, build, check that the tag matches the package version, attest build provenance, and publish to PyPI by trusted publishing after approval.
 
