@@ -40,11 +40,14 @@ def _area(review: Review, area_id: str) -> AreaResult:
 # Questions match the spec
 
 
-def test_fifteen_questions_three_per_area() -> None:
-    assert len(QUESTIONS) == 15
+QUESTIONS_PER_AREA = {"agents": 4, "approval": 3, "escalation": 4, "policy_change": 3, "record": 3}
+
+
+def test_seventeen_questions_in_five_areas() -> None:
+    assert len(QUESTIONS) == 17
     for area in AREAS:
         in_area = [q for q in QUESTIONS if q.area == area]
-        assert len(in_area) == 3
+        assert len(in_area) == QUESTIONS_PER_AREA[area.id]
         assert all(q.id.startswith(area.id + ".") for q in in_area)
     for question in QUESTIONS:
         levels = list(question.options.values())
@@ -63,13 +66,28 @@ def test_questions_match_spec_table() -> None:
         section,
         flags=re.MULTILINE,
     )
-    assert len(rows) == 15
+    assert len(rows) == 17
     for (qid, text, gap, partial, in_place), question in zip(rows, QUESTIONS, strict=True):
         assert qid == question.id
         assert text == question.text
         assert question.options[gap] is Level.GAP
         assert question.options[partial] is Level.PARTIAL
         assert question.options[in_place] is Level.IN_PLACE
+
+
+def test_guidance_wording() -> None:
+    for question in QUESTIONS:
+        for text in (question.text, question.why, question.next_step):
+            assert "reach" not in text
+            assert "acts for" not in text
+            assert "acted for" not in text
+    by_id = {question.id: question for question in QUESTIONS}
+    second_person = by_id["policy_change.second_person"].next_step
+    assert "accepted risk" in second_person
+    assert "not a substitute" in second_person
+    assert "add a waiting period" not in second_person
+    assert "refused, not approved" in by_id["escalation.path"].next_step
+    assert "must match the approved request" in by_id["escalation.expiry"].next_step
 
 
 # Scoring
@@ -86,7 +104,12 @@ def test_area_takes_weakest_answer(tmp_path: Path) -> None:
 def test_all_in_place(tmp_path: Path) -> None:
     review = _review(
         tmp_path,
-        {"agents.inventory": "complete", "agents.owner": "all", "agents.reach": "all"},
+        {
+            "agents.inventory": "complete",
+            "agents.owner": "all",
+            "agents.reach": "all",
+            "agents.new_tools": "needs_decision",
+        },
     )
     area = _area(review, "agents")
     assert area.level is Level.IN_PLACE
@@ -99,6 +122,14 @@ def test_incomplete_area_is_capped_at_partial(tmp_path: Path) -> None:
     assert area.level is Level.PARTIAL
     assert area.incomplete
     assert area.answered == 2
+
+
+def test_new_questions_score(tmp_path: Path) -> None:
+    review = _review(tmp_path, {"agents.new_tools": "automatic", "escalation.stop": "informal"})
+    new_tools = _area(review, "agents").questions[3]
+    stop = _area(review, "escalation").questions[3]
+    assert (new_tools.question.id, new_tools.level) == ("agents.new_tools", Level.GAP)
+    assert (stop.question.id, stop.level) == ("escalation.stop", Level.PARTIAL)
 
 
 def test_incomplete_area_keeps_a_gap(tmp_path: Path) -> None:
@@ -151,7 +182,7 @@ def test_example_file_scores() -> None:
         "policy_change": Level.PARTIAL,
         "record": Level.GAP,
     }
-    assert review.answered == 14
+    assert review.answered == 16
     assert review.organisation == "Example Logistics Ltd"
 
 
@@ -234,7 +265,7 @@ def test_report_contents(tmp_path: Path) -> None:
     assert digest in html
     assert "2026-10-14" in html
     assert "Example Co" in html
-    assert "1 of 15 questions answered" in html
+    assert "1 of 17 questions answered" in html
     assert "not a conformity assessment" in html
     for area in AREAS:
         assert area.title in html

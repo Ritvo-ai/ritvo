@@ -42,7 +42,7 @@ ritvo --version
 
 ### Authority gap review
 
-Answer 15 questions about how your organisation governs its agents, then score them:
+Answer 17 questions about how your organisation governs its agents, then score them:
 
 ```sh
 cp examples/review/answers.yaml my-answers.yaml   # edit the answers

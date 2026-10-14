@@ -96,13 +96,23 @@ QUESTIONS = (
     ),
     _question(
         "agents.reach",
-        "For each agent, is it written down which tools and data it may use, and which of "
-        "its actions are high risk?",
+        "For each agent, is it written down what it can access and do, and which of its "
+        "actions are high risk?",
         ("none", "some", "all"),
-        "If reach is not written down, nobody can tell whether a request is inside an "
-        "agent's normal permissions or needs a decision.",
-        "For each agent, list the tools and data it may use and mark each action low, "
-        "medium or high risk.",
+        "If what an agent can access and do is not written down, nobody can tell whether a "
+        "request is inside its normal permissions or needs a decision.",
+        "For each agent, list the tools and data it can access and the actions it can take, "
+        "and mark each action low, medium or high risk.",
+    ),
+    _question(
+        "agents.new_tools",
+        "When a new tool or capability becomes available to an agent, what happens before "
+        "the agent can use it?",
+        ("automatic", "informal", "needs_decision"),
+        "A tool added to a server an agent already uses can become usable at once, without "
+        "anyone deciding that the agent should have it.",
+        "Treat every new tool or capability as not permitted until a named role decides "
+        "whether the agent may use it and at which risk tier.",
     ),
     _question(
         "approval.named",
@@ -115,21 +125,22 @@ QUESTIONS = (
     ),
     _question(
         "approval.self",
-        "Can an agent's owner, or the person the agent acts for, approve that agent's own request?",
+        "Can an agent's owner, or the person who asked the agent to do the task, approve that "
+        "agent's own request?",
         ("yes", "not_prevented", "prevented"),
         "When the requester or the agent's owner can approve, there is no second person "
         "and the approval adds no control.",
-        "Prevent the agent's owner and the person it acts for from approving its requests "
-        "above the low risk tier, and enforce it in the approval tool.",
+        "Prevent the agent's owner and the person who asked the agent to do the task from "
+        "approving its requests above the low risk tier, and enforce it in the approval tool.",
     ),
     _question(
         "approval.context",
         "When someone approves, do they see exactly what they are approving: the agent, "
-        "the person it acts for, the tool and the parameters?",
+        "the person who asked the agent to do the task, the tool and the parameters?",
         ("no", "partly", "yes"),
         "An approver who sees only a summary can approve something different from what runs.",
-        "Show the approver the agent, the person it acts for, the tool and the exact "
-        "parameters, and tie the approval to that one request.",
+        "Show the approver the agent, the person who asked the agent to do the task, the "
+        "tool and the exact parameters, and tie the approval to that one request.",
     ),
     _question(
         "escalation.path",
@@ -138,7 +149,8 @@ QUESTIONS = (
         "A request that waits on one absent person either blocks work or gets approved "
         "outside the process.",
         "Define an ordered list of roles for each risk tier, with a timeout after which "
-        "the request moves to the next role.",
+        "the request moves to the next role. If nobody answers at the last step, the "
+        "request is refused, not approved.",
     ),
     _question(
         "escalation.expiry",
@@ -147,7 +159,8 @@ QUESTIONS = (
         "An approval that never expires, or that covers more than one request, can be "
         "reused for something nobody approved.",
         "Give every approval an expiry and bind it to one request, so a retry with "
-        "different parameters needs a new approval.",
+        "different parameters needs a new approval. The action that runs must match the "
+        "approved request.",
     ),
     _question(
         "escalation.waiting",
@@ -159,19 +172,29 @@ QUESTIONS = (
         "reads may continue only where that is decided in advance.",
     ),
     _question(
+        "escalation.stop",
+        "Can an agent be suspended immediately during a run, and is it decided who may do it?",
+        ("no", "informal", "named_role"),
+        "If an agent cannot be stopped mid-run, a wrong action continues until it finishes. "
+        "If nobody is named to stop it, nobody acts in time.",
+        "Provide a way to suspend an agent immediately during a run, and name the roles "
+        "that may do it, including at least one outside the team that built the agent.",
+    ),
+    _question(
         "policy_change.second_person",
         "Does a change to an agent's permissions need approval from someone other than its author?",
         ("no", "sometimes", "always"),
-        "One person who can both write and approve a permission change can widen an "
-        "agent's reach on their own.",
-        "Require a second person to approve every permission change. Where one person "
-        "holds both roles, add a waiting period between writing and approving.",
+        "One person who can both write and approve a permission change can widen what an "
+        "agent can access and do on their own.",
+        "Require a second person to approve every permission change. If only one person "
+        "exists, record it as an accepted risk and notify someone outside the team of each "
+        "change. A delay only makes the change visible; it is not a substitute.",
     ),
     _question(
         "policy_change.owners",
         "Does a change that affects a team's systems need that team's sign-off?",
         ("no", "informal", "required"),
-        "Teams whose systems an agent can reach find out about a change only after "
+        "Teams whose systems an agent can access find out about a change only after "
         "something goes wrong.",
         "Record which team owns each tool or system, and require sign-off from every team "
         "a change touches.",
@@ -202,13 +225,13 @@ QUESTIONS = (
     ),
     _question(
         "record.identity",
-        "Does the record show both the agent and the person it acted for, with a distinct "
-        "identity for each agent?",
+        "Does the record show both the agent and the person who asked the agent to do the "
+        "task, with a distinct identity for each agent?",
         ("no", "agent_only", "both"),
         "If agents share keys, or the record shows only the agent, nobody can say which "
-        "agent acted or for whom.",
+        "agent acted or who asked it to.",
         "Give each agent its own identity, stop sharing keys between agents, and record "
-        "the person an agent acts for alongside the agent.",
+        "the person who asked the agent to do the task alongside the agent.",
     ),
 )
 

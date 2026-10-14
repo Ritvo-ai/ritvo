@@ -17,18 +17,21 @@ answers:
   # Does every agent have a named person who is accountable for it?
   # none | some | all
   agents.owner: some
-  # For each agent, is it written down which tools and data it may use, and which of its actions are high risk?
+  # For each agent, is it written down what it can access and do, and which of its actions are high risk?
   # none | some | all
   agents.reach: none
+  # When a new tool or capability becomes available to an agent, what happens before the agent can use it?
+  # automatic | informal | needs_decision
+  agents.new_tools: automatic
 
   # Who may approve what
   # When an agent needs approval for something outside its normal permissions, who decides?
   # no_one | informal | named_role
   approval.named: informal
-  # Can an agent's owner, or the person the agent acts for, approve that agent's own request?
+  # Can an agent's owner, or the person who asked the agent to do the task, approve that agent's own request?
   # yes | not_prevented | prevented
   approval.self: not_prevented
-  # When someone approves, do they see exactly what they are approving: the agent, the person it acts for, the tool and the parameters?
+  # When someone approves, do they see exactly what they are approving: the agent, the person who asked the agent to do the task, the tool and the parameters?
   # no | partly | yes
   approval.context: partly
 
@@ -42,6 +45,9 @@ answers:
   # While a request waits for a decision, what does the agent do?
   # proceeds | held_no_rule | rule_by_risk
   escalation.waiting: held_no_rule
+  # Can an agent be suspended immediately during a run, and is it decided who may do it?
+  # no | informal | named_role
+  escalation.stop: informal
 
   # How the rules change
   # Does a change to an agent's permissions need approval from someone other than its author?
@@ -61,7 +67,7 @@ answers:
   # Could the record be changed or deleted without anyone noticing?
   # yes | logged | no
   record.tamper: unknown
-  # Does the record show both the agent and the person it acted for, with a distinct identity for each agent?
+  # Does the record show both the agent and the person who asked the agent to do the task, with a distinct identity for each agent?
   # no | agent_only | both
   record.identity: agent_only
 

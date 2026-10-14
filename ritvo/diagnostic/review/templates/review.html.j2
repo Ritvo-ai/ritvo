@@ -78,7 +78,7 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
   .area:first-child { border-top: 0; }
   .finding { grid-template-columns: minmax(0, 1fr); }
 }
-@page { size: A4; margin: 9mm; }
+@page { size: A4; margin: 8mm; }
 @media print {
   :root {
     --bg: #fff; --surface: #fff; --ink: #12222C; --ink2: #44565F; --muted: #5F7079;
@@ -87,7 +87,7 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
     --ok: #2E7D4F; --ok-bg: #E4F2EA; --unk: #8A979D;
   }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body { padding: 0; font-size: 7pt; line-height: 1.28; }
+  body { padding: 0; font-size: 6.8pt; line-height: 1.24; }
   .wrap { max-width: none; gap: 6px; }
   .cover { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-bottom: 5px; gap: 12px; border-bottom-width: 1.5px; }
   .cover h1 { font-size: 15pt; }
@@ -104,11 +104,11 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
   .section { gap: 3px; }
   .section > h2 { font-size: 8.5pt; }
   .findings { column-count: 3; column-gap: 0; border-radius: 4px; }
-  .finding { break-inside: avoid; display: block; padding: 3px 6px 4px; }
+  .finding { break-inside: avoid; display: block; padding: 2px 5px 3px; }
   .finding:last-child { border-bottom: 1px solid var(--line2); }
   .finding .area-name { display: none; }
-  .finding h3 { font-size: 6.8pt; margin-top: 2px; }
-  .finding dl { display: block; margin-top: 1px; font-size: 6.3pt; }
+  .finding h3 { font-size: 6.6pt; margin-top: 1px; }
+  .finding dl { display: block; margin-top: 1px; font-size: 6.1pt; }
   .finding dt { display: inline; font-weight: 600; color: var(--ink2); }
   .finding dt::after { content: ": "; }
   .finding dd { display: inline; }
