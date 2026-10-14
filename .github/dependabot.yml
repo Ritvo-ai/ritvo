@@ -4,6 +4,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      python:
+        patterns: ["*"]
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
@@ -13,6 +18,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ["*"]
     open-pull-requests-limit: 5
     commit-message:
       prefix: ci
