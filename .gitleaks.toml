@@ -1,0 +1,10 @@
+title = "Ritvo gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# The only allowlist: fixtures that are clearly fake and marked as such by living under a
+# tests/fixtures/fake/ directory. Anything else that looks like a secret fails the scan.
+[[allowlists]]
+description = "Clearly fake, marked test fixtures"
+paths = ['''(^|/)tests/fixtures/fake/''']

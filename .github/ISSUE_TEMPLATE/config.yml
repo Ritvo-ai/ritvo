@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Ritvo-ai/ritvo/security/advisories/new
+    about: Report security problems privately. Never open a public issue for one.
+  - name: Getting help
+    url: https://github.com/Ritvo-ai/ritvo/blob/main/SUPPORT.md
+    about: Where to ask what.

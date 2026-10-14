@@ -1,0 +1,30 @@
+name: Question
+description: Ask how something works or how to use it. Support is best effort, with no SLA.
+labels: [needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste real credentials, tokens, client configuration or client data. Use fictional values.
+        Security problems go through private vulnerability reporting, not here.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What you are trying to do, and what you have tried.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Output of `ritvo --version`, or the commit you built from.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and read docs/SPEC.md.
+          required: true
+        - label: This question contains no real secrets, tokens or client data.
+          required: true

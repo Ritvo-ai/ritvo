@@ -1,0 +1,478 @@
+<title>Ritvo Inspection Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: an inspection certificate. Cover with a metadata strip, a readings row, a sticky role switcher, then one panel per reader. Everything prints. */
+:root {
+  --bg: #F2F5F6; --surface: #FFFFFF; --ink: #12222C; --ink2: #44565F; --muted: #5F7079;
+  --line: #D2DBDF; --line2: #E6ECEF;
+  --accent: #0B6B7C; --accent-ink: #FFFFFF; --accent-soft: #E1F0F3;
+  --t-low: #CFE5EA; --t-low-ink: #12222C;
+  --t-med: #5BA3B3; --t-med-ink: #06202A;
+  --t-high: #0B4F63; --t-high-ink: #FFFFFF;
+  --p1: #B3261E; --p1-bg: #FBE9E7; --p2: #9A5200; --p2-bg: #FCEFD9;
+  --ok: #2E7D4F; --ok-bg: #E4F2EA; --unk: #8A979D;
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1A21; --surface: #15252E; --ink: #E6EEF1; --ink2: #B4C3CA; --muted: #8DA0A9;
+    --line: #2A3C46; --line2: #20313A;
+    --accent: #5EC0D1; --accent-ink: #0E1A21; --accent-soft: #17343C;
+    --t-low: #24505E; --t-low-ink: #E6EEF1;
+    --t-med: #3F8CA0; --t-med-ink: #05161C;
+    --t-high: #9ED6E4; --t-high-ink: #05161C;
+    --p1: #FF8A80; --p1-bg: #3A1E1D; --p2: #F2B35E; --p2-bg: #3A2B14;
+    --ok: #7FD1A0; --ok-bg: #173226; --unk: #6F8088;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1A21; --surface: #15252E; --ink: #E6EEF1; --ink2: #B4C3CA; --muted: #8DA0A9;
+  --line: #2A3C46; --line2: #20313A;
+  --accent: #5EC0D1; --accent-ink: #0E1A21; --accent-soft: #17343C;
+  --t-low: #24505E; --t-low-ink: #E6EEF1;
+  --t-med: #3F8CA0; --t-med-ink: #05161C;
+  --t-high: #9ED6E4; --t-high-ink: #05161C;
+  --p1: #FF8A80; --p1-bg: #3A1E1D; --p2: #F2B35E; --p2-bg: #3A2B14;
+  --ok: #7FD1A0; --ok-bg: #173226; --unk: #6F8088;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55; padding-inline: 16px; padding-block: 16px 56px; }
+.wrap { max-width: 1120px; margin-inline: auto; display: flex; flex-direction: column; gap: 24px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+p { margin: 0; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+.num { font-variant-numeric: tabular-nums; }
+
+.ribbon { font-family: var(--f-mono); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); border: 1px dashed var(--line); padding: 6px 12px; border-radius: 4px; align-self: flex-start; }
+
+/* cover */
+.cover { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 32px; padding-block: 8px 24px; border-bottom: 2px solid var(--ink); }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+.cover h1 { font-size: clamp(32px, 5vw, 52px); font-weight: 700; line-height: 1.05; }
+.lede { margin-top: 16px; font-size: 17px; max-width: 52ch; color: var(--ink2); }
+.lede b { color: var(--ink); font-weight: 600; }
+.meta { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 16px; row-gap: 6px; align-content: start; font-size: 13px; }
+.meta dt { color: var(--muted); font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; padding-top: 2px; }
+.meta dd { margin: 0; font-family: var(--f-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+
+/* readings */
+.readings { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--line); background: var(--surface); }
+.reading { padding: 16px 18px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.reading:first-child { border-left: 0; }
+.reading .k { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.reading .v { font-family: var(--f-display); font-size: 34px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.reading .s { font-size: 13px; color: var(--ink2); }
+
+/* switcher */
+.switcher { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; display: flex; gap: 6px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+.switcher button { font: inherit; font-weight: 600; font-size: 14px; color: var(--ink2); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; cursor: pointer; white-space: nowrap; }
+.switcher button:hover { border-color: var(--accent); color: var(--ink); }
+.switcher button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* panels */
+.panel { display: flex; flex-direction: column; gap: 32px; }
+.panel[hidden] { display: none !important; }
+.panel-head { display: grid; gap: 6px; }
+.panel-head h2 { font-size: 26px; font-weight: 700; }
+.panel-head p { color: var(--ink2); max-width: 70ch; }
+.block { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.block h3 { font-size: 17px; font-weight: 600; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.block h3 small { font-family: var(--f-body); font-weight: 400; font-size: 13px; color: var(--muted); }
+.twocol { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+
+/* tables */
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th { text-align: left; font-family: var(--f-mono); font-weight: 500; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--surface); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--line2); vertical-align: top; min-width: 0; }
+tr:last-child td { border-bottom: 0; }
+td.id { font-family: var(--f-mono); font-size: 12.5px; white-space: nowrap; }
+.dim { color: var(--muted); }
+.none { color: var(--p1); font-weight: 600; }
+
+/* chips */
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 4px; white-space: nowrap; line-height: 1.5; }
+.tier-low { background: var(--t-low); color: var(--t-low-ink); }
+.tier-medium { background: var(--t-med); color: var(--t-med-ink); }
+.tier-high { background: var(--t-high); color: var(--t-high-ink); }
+.tier-unknown { background: repeating-linear-gradient(135deg, transparent 0 4px, var(--line) 4px 6px); color: var(--ink2); border: 1px dashed var(--unk); }
+.p-1 { background: var(--p1-bg); color: var(--p1); }
+.p-2 { background: var(--p2-bg); color: var(--p2); }
+.st-ok { background: var(--ok-bg); color: var(--ok); }
+.st-partial { background: var(--p2-bg); color: var(--p2); }
+.st-gap { background: var(--p1-bg); color: var(--p1); }
+.st-na { background: var(--line2); color: var(--ink2); }
+.ico { width: 10px; height: 10px; display: inline-block; flex: none; }
+.flags { display: flex; gap: 4px; flex-wrap: wrap; }
+.flag { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; color: var(--ink2); }
+.flag.d { border-color: var(--p1); color: var(--p1); }
+
+/* tier bar */
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.bars { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 14px; align-items: center; }
+.bars .lab { font-family: var(--f-mono); font-size: 12.5px; }
+.bar { display: flex; gap: 2px; height: 22px; min-width: 0; }
+.seg { border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: default; min-width: 18px; }
+.seg:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.bar.unins { height: 22px; border: 1px dashed var(--unk); border-radius: 3px; align-items: center; padding-inline: 8px; font-size: 12px; color: var(--ink2); }
+
+/* findings */
+.findings { display: flex; flex-direction: column; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.finding { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 4px 20px; padding: 16px 18px; border-bottom: 1px solid var(--line2); }
+.finding:last-child { border-bottom: 0; }
+.finding .rule { font-family: var(--f-mono); font-size: 12.5px; }
+.finding .subj { font-family: var(--f-mono); font-size: 13px; font-weight: 500; }
+.finding dl { margin: 8px 0 0; display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 4px 12px; font-size: 13.5px; }
+.finding dt { color: var(--muted); font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; }
+.finding dd { margin: 0; }
+
+/* matrix */
+.matrix td, .matrix th { text-align: center; }
+.matrix td:first-child, .matrix th:first-child { text-align: left; }
+.matrix .cell { display: inline-block; min-width: 64px; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.matrix .no { color: var(--line); }
+
+/* misc */
+.filter { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter button { font: inherit; font-size: 13px; font-weight: 600; background: var(--surface); color: var(--ink2); border: 1px solid var(--line); border-radius: 4px; padding: 4px 12px; cursor: pointer; }
+.filter button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.steps li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line2); align-items: start; }
+.steps li:last-child { border-bottom: 0; }
+.box { width: 16px; height: 16px; border: 1.5px solid var(--ink2); border-radius: 3px; margin-top: 3px; }
+.who { font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); white-space: nowrap; padding-top: 3px; }
+pre { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; overflow-x: auto; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.6; }
+.note { font-size: 13.5px; color: var(--ink2); border-left: 3px solid var(--line); padding-left: 12px; max-width: 78ch; }
+.sign { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.sign div { border-top: 1px solid var(--ink2); padding-top: 6px; font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); min-height: 48px; }
+.foot { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; display: flex; gap: 8px 24px; flex-wrap: wrap; justify-content: space-between; }
+.tip { position: fixed; z-index: 20; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 12.5px; padding: 5px 9px; border-radius: 4px; max-width: 280px; }
+.tip[hidden] { display: none !important; }
+
+@media (max-width: 820px) {
+  .cover { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .readings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reading:nth-child(3) { border-left: 0; }
+  .reading:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .twocol { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .finding { grid-template-columns: minmax(0, 1fr); }
+  .sign { grid-template-columns: minmax(0, 1fr); }
+  .steps li { grid-template-columns: 22px minmax(0, 1fr); }
+  .steps .who { grid-column: 2; padding-top: 0; }
+}
+@media (prefers-reduced-motion: no-preference) { .switcher button { transition: background .15s, border-color .15s; } }
+
+/* print: light palette, every panel, one per page */
+@media print {
+  :root, :root[data-theme="dark"] {
+    --bg: #fff; --surface: #fff; --ink: #12222C; --ink2: #44565F; --muted: #5F7079; --line: #C5CFD4; --line2: #E1E7EA;
+    --accent: #0B6B7C; --accent-ink: #fff; --t-low: #CFE5EA; --t-low-ink: #12222C; --t-med: #5BA3B3; --t-med-ink: #06202A; --t-high: #0B4F63; --t-high-ink: #fff;
+    --p1: #B3261E; --p1-bg: #FBE9E7; --p2: #9A5200; --p2-bg: #FCEFD9; --ok: #2E7D4F; --ok-bg: #E4F2EA;
+  }
+  body { padding: 0; font-size: 11pt; }
+  .switcher, .filter, .ribbon { display: none !important; }
+  .panel[hidden] { display: flex !important; }
+  .panel { break-before: page; }
+  tr, .finding, .steps li { break-inside: avoid; }
+  .tablewrap, .findings, .steps { border-color: #C5CFD4; }
+}
+</style>
+
+<div class="wrap">
+  <div class="ribbon">Sample report · fictional organisation and data</div>
+
+  <header class="cover">
+    <div>
+      <p class="eyebrow">Agent authority inspection</p>
+      <h1>Meridian Pay</h1>
+      <p class="lede" id="lede"></p>
+    </div>
+    <dl class="meta" id="meta"></dl>
+  </header>
+
+  <section class="readings" id="readings" aria-label="Summary"></section>
+
+  <nav class="switcher" id="switcher" role="tablist" aria-label="Read this report as"></nav>
+
+  <main id="panels"></main>
+
+  <footer class="foot">
+    <span>Generated on this machine by <code>ritvo inspect</code>. Nothing was uploaded. This file loads no scripts or fonts from the internet when produced by the tool.</span>
+    <span>Findings are facts from files and tool metadata, not security verdicts.</span>
+  </footer>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(function () {
+  /* ---------- sample inventory (fictional) ---------- */
+  var D = {
+    org: "Meridian Pay",
+    id: "RV-INS-2026-1013-0930",
+    generated: "13 Oct 2026, 09:30 IST",
+    previous: "29 Sep 2026",
+    tool: "ritvo inspect 0.1",
+    command: "ritvo inspect ./services ~/agents --defaults --connect --report",
+    hash: "a41f7c0e…b9c2e1d4",
+    manifest: { paths: 3, files: 87, contacted: 5, spawned: 1, envNames: ["SHARED_API_KEY", "LLM_API_KEY", "CRM_BASE_URL", "PAYMENTS_BASE_URL", "LEDGER_BASE_URL", "SEARCH_API_KEY"] },
+    issuer: "login.meridian.example",
+    servers: [
+      { id: "ledger-db-mcp",  transport: "http",  auth: true,  scopes: ["ledger:read", "ledger:write"], inspected: true },
+      { id: "orders-mcp",     transport: "http",  auth: true,  scopes: ["orders:read", "orders:write"], inspected: true },
+      { id: "crm-mcp",        transport: "http",  auth: false, scopes: [], inspected: true },
+      { id: "payments-mcp",   transport: "http",  auth: true,  scopes: ["payments:read", "payments:write"], inspected: true },
+      { id: "files-mcp",      transport: "stdio", cmd: "npx -y files-mcp-sample", inspected: true, spawned: true },
+      { id: "web-search-mcp", transport: "stdio", cmd: "uvx web-search-mcp-sample", inspected: false }
+    ],
+    /* server, name, readOnly, destructive, idempotent, openWorld */
+    tools: [
+      ["ledger-db-mcp","get_entry",1,0,1,0], ["ledger-db-mcp","list_entries",1,0,1,0], ["ledger-db-mcp","export_report",1,0,1,0],
+      ["ledger-db-mcp","post_entry",0,0,0,0], ["ledger-db-mcp","purge_entries",0,1,0,0],
+      ["orders-mcp","get_order",1,0,1,0], ["orders-mcp","place_order",0,0,0,0], ["orders-mcp","amend_order",0,0,1,0], ["orders-mcp","cancel_order",0,1,0,0],
+      ["crm-mcp","get_customer",1,0,1,0], ["crm-mcp","search_customers",1,0,1,0], ["crm-mcp","list_cases",1,0,1,0],
+      ["crm-mcp","update_case",0,0,1,0], ["crm-mcp","add_note",0,0,0,0],
+      ["payments-mcp","get_payout_status",1,0,1,0], ["payments-mcp","create_payout",0,1,0,0], ["payments-mcp","refund_payment",0,1,0,0], ["payments-mcp","void_payment",0,1,0,0],
+      ["files-mcp","read_file",1,0,1,0], ["files-mcp","list_dir",1,0,1,0], ["files-mcp","write_file",0,0,1,0], ["files-mcp","delete_file",0,1,0,0]
+    ],
+    agents: [
+      { id: "ledger-reconciler", owner: "Priya Nair",  team: "Finance Ops",  fw: "langgraph", servers: ["ledger-db-mcp", "files-mcp"] },
+      { id: "support-triage",    owner: null,          team: null,           fw: "crewai",    servers: ["crm-mcp", "files-mcp"], envs: ["SHARED_API_KEY"] },
+      { id: "order-router",      owner: "Dev Kapoor",  team: "Trading Tech", fw: "langgraph", servers: ["orders-mcp", "ledger-db-mcp"] },
+      { id: "research-assistant",owner: null,          team: null,           fw: "langgraph", servers: ["web-search-mcp", "files-mcp"] },
+      { id: "payout-agent",      owner: "Marcus Lee",  team: "Treasury",     fw: "custom",    servers: ["payments-mcp"] },
+      { id: "onboarding-helper", owner: null,          team: null,           fw: "custom",    servers: ["crm-mcp"], envs: ["SHARED_API_KEY"] }
+    ],
+    configs: [
+      ["./services/agents/mcp.json", "MCP servers", 5],
+      ["~/agents/.mcp.json", "MCP servers", 2],
+      ["./services/agents/**/*.py", "Framework imports, env names", 74],
+      ["./services/registry-export.json", "Agent registry export", 1],
+      ["~/.cursor/mcp.json", "MCP servers (default location)", 1],
+      ["~/.claude.json", "MCP servers (default location)", 4]
+    ]
+  };
+  D.diff = [
+    ["Added", "Agent", "onboarding-helper"],
+    ["Added", "Tool", "payments-mcp / void_payment"],
+    ["Changed", "Tool", "crm-mcp / update_case: idempotent false → true"],
+    ["Added", "Environment name", "SHARED_API_KEY now also used by onboarding-helper"]
+  ];
+
+  /* ---------- derived ---------- */
+  var RANK = { unknown: 0, low: 1, medium: 2, high: 3 };
+  var TIERS = ["low", "medium", "high"];
+  function tierOf(t) { return t[3] ? "high" : (t[2] ? "low" : "medium"); }
+  var serverById = {}; D.servers.forEach(function (s) { serverById[s.id] = s; s.tools = D.tools.filter(function (t) { return t[0] === s.id; }); s.mix = { low: 0, medium: 0, high: 0 }; s.tools.forEach(function (t) { s.mix[tierOf(t)]++; }); });
+  D.agents.forEach(function (a) {
+    var hi = 0, max = "low", unk = false;
+    a.servers.forEach(function (sid) { var s = serverById[sid]; if (!s.inspected) { unk = true; return; } s.tools.forEach(function (t) { var x = tierOf(t); if (x === "high") hi++; if (RANK[x] > RANK[max]) max = x; }); });
+    a.high = hi; a.max = max; a.unk = unk;
+  });
+  var totalTools = D.tools.length, highTools = D.tools.filter(function (t) { return t[3]; }).length;
+  var unowned = D.agents.filter(function (a) { return !a.owner; });
+  var inspected = D.servers.filter(function (s) { return s.inspected; });
+  var httpServers = D.servers.filter(function (s) { return s.transport === "http"; });
+  var httpAuth = httpServers.filter(function (s) { return s.auth; });
+
+  D.findings = [
+    { p: 1, rule: "tool.destructive_unowned", subj: "files-mcp / delete_file",
+      saw: "Marked destructive. Reachable from support-triage and research-assistant. Neither agent has a registered owner.",
+      why: "A tool that deletes data can be called by agents that nobody is accountable for.",
+      next: "Assign owners to both agents, then decide whether delete_file asks on every call." },
+    { p: 1, rule: "mcp.no_auth", subj: "crm-mcp",
+      saw: "HTTP server with no OAuth protected resource metadata and no authorization server advertised. Reached by support-triage and onboarding-helper.",
+      why: "This scan cannot show who a caller is at this server. It may still be protected another way, for example by a network rule.",
+      next: "Confirm how crm-mcp authenticates callers. If it does not, add token validation before turning enforcement on." },
+    { p: 2, rule: "agent.no_owner", subj: "support-triage", saw: "No owner in config or the registry export. Reaches one high-tier tool.", why: "Approvals and escalations need a named person to start from.", next: "Name an owner and owner team." },
+    { p: 2, rule: "agent.no_owner", subj: "research-assistant", saw: "No owner in config or the registry export. Reaches one high-tier tool and one server that was not inspected.", why: "Approvals and escalations need a named person to start from.", next: "Name an owner and owner team." },
+    { p: 2, rule: "agent.no_owner", subj: "onboarding-helper", saw: "No owner in config or the registry export. New since the last scan.", why: "Approvals and escalations need a named person to start from.", next: "Name an owner and owner team." },
+    { p: 2, rule: "identity.shared_key_name", subj: "SHARED_API_KEY", saw: "The same environment variable name appears in support-triage and onboarding-helper. Names only; values were never read.", why: "A shared credential name suggests two agents may be indistinguishable to the services they call.", next: "Check whether each agent has its own credential." }
+  ];
+  var p1 = D.findings.filter(function (f) { return f.p === 1; }).length;
+
+  /* ---------- helpers ---------- */
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function $(id) { return document.getElementById(id); }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function tierChip(t, label) { return '<span class="chip tier-' + t + '">' + (label || cap(t)) + '</span>'; }
+  function pChip(p) {
+    var ico = p === 1 ? '<svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 10 5 5 10 0 5Z" fill="currentColor"/></svg>' : '<svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 10 9H0Z" fill="currentColor"/></svg>';
+    return '<span class="chip p-' + p + '">' + ico + (p === 1 ? "P1 Fix first" : "P2 Review") + '</span>';
+  }
+  function stChip(k, t) { return '<span class="chip st-' + k + '">' + t + '</span>'; }
+  function table(head, rows, cls) {
+    return '<div class="tablewrap" tabindex="0"><table class="' + (cls || "") + '"><thead><tr>' + head.map(function (h) { return "<th>" + h + "</th>"; }).join("") + "</tr></thead><tbody>" + rows.join("") + "</tbody></table></div>";
+  }
+  function plural(n, w) { return n + " " + w + (n === 1 ? "" : "s"); }
+
+  /* ---------- cover ---------- */
+  $("lede").innerHTML = "Found <b>" + plural(D.agents.length, "agent") + "</b>, <b>" + plural(D.servers.length, "MCP server") + "</b> and <b>" + plural(totalTools, "tool") + "</b>. <b>" + unowned.length + " of " + D.agents.length + " agents have no owner.</b> One HTTP server shows no authorization, and one server was not inspected.";
+  $("meta").innerHTML = [
+    ["Report", D.id], ["Scanned", D.generated], ["Tool", D.tool], ["Previous scan", D.previous],
+    ["Scope", D.manifest.paths + " paths · " + D.manifest.files + " files read"], ["Inventory", "sha256 " + D.hash]
+  ].map(function (r) { return "<dt>" + r[0] + "</dt><dd>" + esc(r[1]) + "</dd>"; }).join("");
+
+  $("readings").innerHTML = [
+    ["Agents", D.agents.length, (D.agents.length - unowned.length) + " with a named owner"],
+    ["MCP servers", D.servers.length, inspected.length + " inspected · " + httpAuth.length + " of " + httpServers.length + " HTTP servers advertise authorization"],
+    ["Tools", totalTools, highTools + " would start at the high tier"],
+    ["Findings", D.findings.length, p1 + " to fix first"]
+  ].map(function (r) { return '<div class="reading"><span class="k">' + r[0] + '</span><span class="v">' + r[1] + '</span><span class="s">' + r[2] + "</span></div>"; }).join("");
+
+  /* ---------- tier bars ---------- */
+  function tierBars() {
+    var max = Math.max.apply(null, D.servers.map(function (s) { return s.tools.length; }));
+    var rows = D.servers.map(function (s) {
+      var bar;
+      if (!s.inspected) bar = '<div class="bar unins" style="width:60%">Not inspected</div>';
+      else bar = '<div class="bar" style="width:' + Math.round(s.tools.length / max * 100) + '%">' + TIERS.map(function (t) {
+        return s.mix[t] ? '<div class="seg tier-' + t + '" style="flex:' + s.mix[t] + '" tabindex="0" data-tip="' + s.id + ' · ' + plural(s.mix[t], t + "-tier tool") + '">' + s.mix[t] + "</div>" : "";
+      }).join("") + "</div>";
+      return '<span class="lab">' + s.id + "</span>" + bar;
+    }).join("");
+    return '<div class="legend" aria-label="Legend"><span><i class="sw tier-low"></i>Low (read-only)</span><span><i class="sw tier-medium"></i>Medium (writes)</span><span><i class="sw tier-high"></i>High (destructive)</span></div><div class="bars">' + rows + "</div>";
+  }
+
+  /* ---------- role panels ---------- */
+  var ROLES = [
+    { key: "engineer", label: "Platform engineer" },
+    { key: "security", label: "Security" },
+    { key: "owner", label: "Policy owner" },
+    { key: "auditor", label: "Auditor" },
+    { key: "all", label: "All, for print" }
+  ];
+
+  function head(title, text) { return '<div class="panel-head"><h2>' + title + "</h2><p>" + text + "</p></div>"; }
+
+  function panelEngineer() {
+    var srvRows = D.servers.map(function (s) {
+      var order = !s.inspected ? "Inspect first" : (s.transport === "http" && !s.auth ? "Confirm auth first" : (s.mix.high ? "Wrap early" : "Wrap later"));
+      var auth = s.transport === "stdio" ? '<span class="dim">Local process</span>' : (s.auth ? "Advertised · " + esc(D.issuer) : '<span class="none">None found</span>');
+      return "<tr><td class=\"id\">" + s.id + "</td><td>" + s.transport + "</td><td>" + auth + "</td><td class=\"num\">" + (s.inspected ? s.tools.length : "?") + "</td><td>" + order + "</td></tr>";
+    });
+    var toolRows = D.tools.map(function (t) {
+      var tier = tierOf(t);
+      var fl = [t[2] ? "read-only" : "", t[3] ? "destructive" : "", t[4] ? "idempotent" : "", t[5] ? "open-world" : ""].filter(Boolean).map(function (f) { return '<span class="flag' + (f === "destructive" ? " d" : "") + '">' + f + "</span>"; }).join("");
+      return '<tr data-tier="' + tier + '"><td class="id">' + t[0] + "</td><td class=\"id\">" + t[1] + '</td><td><div class="flags">' + fl + "</div></td><td>" + tierChip(tier) + "</td></tr>";
+    });
+    var cfgRows = D.configs.map(function (c) { return "<tr><td class=\"id\">" + esc(c[0]) + "</td><td>" + c[1] + "</td><td class=\"num\">" + c[2] + "</td></tr>"; });
+    return head("For the platform engineer", "What exists, how each server authenticates, which tools it exposes and the tier each tool would start at. Use it to decide what to wrap first.") +
+      '<div class="block"><h3>Tools per server, by proposed tier</h3>' + tierBars() + "</div>" +
+      '<div class="block"><h3>Servers <small>' + inspected.length + " of " + D.servers.length + " inspected</small></h3>" + table(["Server", "Transport", "Authorization", "Tools", "Suggested order"], srvRows) + "</div>" +
+      '<div class="block"><h3>Tools <small>Tiers come from tool annotations and are proposals only</small></h3><div class="filter" id="tierfilter"><button aria-pressed="true" data-f="all">All ' + totalTools + '</button><button aria-pressed="false" data-f="high">High</button><button aria-pressed="false" data-f="medium">Medium</button><button aria-pressed="false" data-f="low">Low</button></div>' + table(["Server", "Tool", "Annotations", "Proposed tier"], toolRows) + "</div>" +
+      '<div class="twocol"><div class="block"><h3>Where this came from</h3>' + table(["Source", "Read for", "Items"], cfgRows) + '</div><div class="block"><h3>Next</h3><pre>ritvo import inventory.json   # draft change request\nritvo check                   # validate and run the authority diff</pre><p class="note">The import creates a proposal. Nothing changes in <code>ritvo.yaml</code> until the owning teams sign it off.</p></div></div>';
+  }
+
+  function panelSecurity() {
+    var f = D.findings.map(function (x) {
+      return '<div class="finding"><div>' + pChip(x.p) + '</div><div><div class="rule dim">' + x.rule + '</div><div class="subj">' + esc(x.subj) + "</div><dl><dt>Saw</dt><dd>" + x.saw + "</dd><dt>Why</dt><dd>" + x.why + "</dd><dt>Next</dt><dd>" + x.next + "</dd></dl></div></div>";
+    }).join("");
+    var stdio = D.servers.filter(function (s) { return s.transport === "stdio"; }).map(function (s) {
+      return "<tr><td class=\"id\">" + s.id + "</td><td class=\"id\">" + esc(s.cmd) + "</td><td>" + (s.spawned ? "Yes, confirmed by the operator" : '<span class="dim">No, no consent given</span>') + "</td></tr>";
+    });
+    var scopeRows = httpServers.map(function (s) {
+      return "<tr><td class=\"id\">" + s.id + "</td><td class=\"id\">" + (s.scopes.length ? s.scopes.join(", ") : '<span class="none">none advertised</span>') + "</td></tr>";
+    });
+    return head("For security", "What can be reached, what shows no authorization and what runs local code. Priority ranks by what an agent or server can reach. It is not a measure of exploitability.") +
+      '<div class="block"><h3>Findings <small>' + D.findings.length + " · " + p1 + " fix first</small></h3><div class=\"findings\">" + f + "</div></div>" +
+      '<div class="twocol"><div class="block"><h3>Servers that run local code</h3>' + table(["Server", "Command", "Started by the scan"], stdio) + '<p class="note">Starting a stdio server runs its command. The inspector only does so with <code>--connect</code> and a yes for each server. Run it in a sandbox where you can.</p></div>' +
+      '<div class="block"><h3>Scopes advertised by HTTP servers</h3>' + table(["Server", "Scopes"], scopeRows) + '<p class="note">Issuer found: <code>' + esc(D.issuer) + "</code>. crm-mcp advertises none.</p></div></div>" +
+      '<div class="block"><h3>Credential names seen <small>Names only. Values were never read.</small></h3>' + table(["Name", "Seen in"], D.manifest.envNames.map(function (n) {
+        var who = D.agents.filter(function (a) { return a.envs && a.envs.indexOf(n) > -1; }).map(function (a) { return a.id; });
+        return '<tr><td class="id">' + n + "</td><td>" + (who.length ? who.join(", ") : '<span class="dim">service config</span>') + "</td></tr>";
+      })) + "</div>";
+  }
+
+  function panelOwner() {
+    var rows = D.agents.map(function (a) {
+      return "<tr><td class=\"id\">" + a.id + "</td><td>" + (a.owner ? esc(a.owner) + ' <span class="dim">· ' + esc(a.team) + "</span>" : '<span class="none">No owner</span>') + "</td><td>" + a.fw + "</td><td class=\"num\">" + a.high + "</td><td>" + tierChip(a.max) + (a.unk ? ' <span class="dim">+ unknown</span>' : "") + "</td></tr>";
+    });
+    var cols = D.servers;
+    var mrows = D.agents.map(function (a) {
+      return "<tr><td class=\"id\">" + a.id + "</td>" + cols.map(function (s) {
+        if (a.servers.indexOf(s.id) < 0) return '<td><span class="no">·</span></td>';
+        if (!s.inspected) return '<td><span class="cell tier-unknown" data-tip="' + s.id + ': not inspected">?</span></td>';
+        var mx = "low"; s.tools.forEach(function (t) { if (RANK[tierOf(t)] > RANK[mx]) mx = tierOf(t); });
+        return '<td><span class="cell tier-' + mx + '" data-tip="' + a.id + ' can reach ' + s.id + ' (highest tier: ' + mx + ')">' + cap(mx) + "</span></td>";
+      }).join("") + "</tr>";
+    });
+    var steps = [
+      ["Name an owner and team for support-triage, research-assistant and onboarding-helper.", "Agent sponsor"],
+      ["Confirm the " + highTools + " high-tier tools should ask for approval on every call.", "Policy owner"],
+      ["Name who may approve payments-mcp actions. The owner of payout-agent must not approve its own agent's requests.", "Treasury lead"],
+      ["Decide whether unattended agents are allowed. Without an owner they will be refused once enforcement is on.", "Policy owner"],
+      ["Allow the scan to start web-search-mcp so its tools can be listed.", "Platform lead"]
+    ].map(function (s) { return '<li><span class="box" aria-hidden="true"></span><span>' + s[0] + '</span><span class="who">' + s[1] + "</span></li>"; }).join("");
+    return head("For the policy owner", "Who owns what, how far each agent can reach, and the decisions only you can make. Reach is the ceiling set by configuration. Actual use may be narrower.") +
+      '<div class="block"><h3>Decisions needed</h3><ul class="steps">' + steps + "</ul></div>" +
+      '<div class="block"><h3>Agents and owners</h3>' + table(["Agent", "Owner", "Framework", "High-tier tools reachable", "Highest tier"], rows) + "</div>" +
+      '<div class="block"><h3>What each agent can reach <small>Highest tier on each server</small></h3>' + table(["Agent"].concat(cols.map(function (s) { return s.id; })), mrows, "matrix") + "</div>";
+  }
+
+  function panelAuditor() {
+    var m = D.manifest;
+    var diff = D.diff.map(function (d) { return "<tr><td>" + stChip(d[0] === "Added" ? "ok" : "partial", d[0]) + "</td><td>" + d[1] + "</td><td>" + esc(d[2]) + "</td></tr>"; });
+    var ctl = [
+      ["Inventory of agents and tools", "Sections for engineers and policy owners; inventory.json, hash above", "partial", "Partial · 5 of 6 servers inspected"],
+      ["Named accountable owner for each agent", unowned.length + " of " + D.agents.length + " agents have none", "gap", "Gap"],
+      ["Access control on tool servers", httpAuth.length + " of " + httpServers.length + " HTTP servers advertise authorization", "partial", "Partial"],
+      ["Human oversight assigned to named people", "Needs approver roles, which are set in Ritvo, not found by a scan", "na", "Not assessed"],
+      ["Logging of agent actions", "This scan reads configuration. It does not read runtime logs", "na", "Not assessed"]
+    ].map(function (c) { return "<tr><td>" + c[0] + "</td><td>" + c[1] + "</td><td>" + stChip(c[2], c[3]) + "</td></tr>"; });
+    var scope = table(["Item", "Value"], [
+      ["Command", "<code>" + esc(D.command) + "</code>"], ["Paths read", m.paths], ["Files read", m.files], ["Servers contacted", m.contacted + " (" + m.spawned + " started locally with consent)"],
+      ["Environment names seen", m.envNames.length + " · names only"], ["Inventory hash", "<code>sha256 " + D.hash + "</code>"]
+    ].map(function (r) { return "<tr><td>" + r[0] + '</td><td class="num">' + r[1] + "</td></tr>"; }));
+    return head("For the auditor", "What was read, what was not, what changed since the last scan, and where the evidence stands against common control areas.") +
+      '<div class="twocol"><div class="block"><h3>Scope and method</h3>' + scope + '</div><div class="block"><h3>What this report does not show</h3><ul class="note" style="margin:0;padding-left:28px;display:grid;gap:6px"><li>Runtime traffic or what any agent actually called.</li><li>Permissions inside a server beyond what it advertises.</li><li>Approvals or bindings. None exist yet.</li><li>Tools on web-search-mcp, which was not started.</li><li>Whether a named owner is the right person. Owners come from configuration, not HR records.</li></ul></div></div>' +
+      '<div class="block"><h3>Changed since ' + D.previous + "</h3>" + table(["Change", "Kind", "Detail"], diff) + "</div>" +
+      '<div class="block"><h3>Starter control mapping</h3>' + table(["Control area", "Evidence in this report", "Status"], ctl) + '<p class="note">A starting point for NIST AI RMF, ISO/IEC 42001 and EU AI Act Article 26 deployer duties. Review it with your compliance lead. It is not a conformity assessment.</p></div>' +
+      '<div class="sign"><div>Prepared by</div><div>Reviewed by</div><div>Date</div></div>';
+  }
+
+  var builders = { engineer: panelEngineer, security: panelSecurity, owner: panelOwner, auditor: panelAuditor };
+  var panels = $("panels"), sw = $("switcher");
+  var html = "";
+  ["engineer", "security", "owner", "auditor"].forEach(function (k) { html += '<section class="panel" id="panel-' + k + '" role="tabpanel" hidden>' + builders[k]() + "</section>"; });
+  panels.innerHTML = html;
+  sw.innerHTML = ROLES.map(function (r) { return '<button role="tab" id="tab-' + r.key + '" data-role="' + r.key + '" aria-selected="false">' + r.label + "</button>"; }).join("");
+
+  function show(key) {
+    if (!builders[key] && key !== "all") key = "engineer";
+    ["engineer", "security", "owner", "auditor"].forEach(function (k) { $("panel-" + k).hidden = !(key === "all" || key === k); });
+    ROLES.forEach(function (r) { $("tab-" + r.key).setAttribute("aria-selected", String(r.key === key)); });
+    try { localStorage.setItem("ritvo-report-role", key); } catch (e) {}
+  }
+  sw.addEventListener("click", function (e) { var b = e.target.closest("button[data-role]"); if (b) show(b.dataset.role); });
+  var start = (location.hash || "").slice(1), saved = null;
+  try { saved = localStorage.getItem("ritvo-report-role"); } catch (e) {}
+  show(["engineer", "security", "owner", "auditor", "all"].indexOf(start) > -1 ? start : (saved || "engineer"));
+
+  /* tier filter */
+  var tf = $("tierfilter");
+  if (tf) tf.addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-f]"); if (!b) return;
+    var f = b.dataset.f;
+    tf.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+    document.querySelectorAll("#panel-engineer tr[data-tier]").forEach(function (r) { r.hidden = !(f === "all" || r.dataset.tier === f); });
+  });
+
+  /* tooltip */
+  var tip = $("tip");
+  function place(x, y) { tip.style.left = Math.min(x + 12, window.innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = (y + 14) + "px"; }
+  document.addEventListener("pointerover", function (e) { var t = e.target.closest("[data-tip]"); if (!t) return; tip.textContent = t.dataset.tip; tip.hidden = false; place(e.clientX, e.clientY); });
+  document.addEventListener("pointermove", function (e) { if (!tip.hidden) place(e.clientX, e.clientY); });
+  document.addEventListener("pointerout", function (e) { if (e.target.closest("[data-tip]")) tip.hidden = true; });
+  document.addEventListener("focusin", function (e) { var t = e.target.closest("[data-tip]"); if (!t) return; var r = t.getBoundingClientRect(); tip.textContent = t.dataset.tip; tip.hidden = false; place(r.left, r.bottom); });
+  document.addEventListener("focusout", function () { tip.hidden = true; });
+})();
+</script>
