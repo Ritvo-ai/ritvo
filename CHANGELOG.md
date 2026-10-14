@@ -12,5 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Product requirements (`docs/PRD.md`), technical specification (`docs/SPEC.md`) and the first decision record, on why Ritvo sits below gateways.
 - Python package skeleton with the `ritvo` CLI entry point (`ritvo --version`).
 - Continuous integration on Linux, macOS and Windows: lint, type check, tests, licence check, secret scan, wheel build and install test, CodeQL, and commit hygiene.
+- Release workflow: on a `v*` tag, test, build, check that the tag matches the package version, attest build provenance, and publish to PyPI by trusted publishing after approval.
+
+### Changed
+
+- Version set to 0.0.1.dev0, a pre-alpha placeholder release that reserves the package name on PyPI.
 
 [Unreleased]: https://github.com/Ritvo-ai/ritvo/commits/main
