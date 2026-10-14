@@ -1,0 +1,71 @@
+# Authority gap review: example answers for a fictional organisation.
+# Copy this file, change the answers and run:  ritvo review answers.yaml
+# The questions and scoring are defined in docs/SPEC.md section 8.1.
+#
+# Each answer is one of the option IDs listed above it, or `unknown` (scored as a gap).
+# Leave a question out, or comment it out, to mark it not answered.
+# Do not commit a real organisation's answers to a public repository.
+
+review_version: 0
+organisation: Example Logistics Ltd
+
+answers:
+  # Agents and what they can do
+  # Is there a list of every AI agent in use, including those built outside the central IT or platform team?
+  # none | partial | complete
+  agents.inventory: partial
+  # Does every agent have a named person who is accountable for it?
+  # none | some | all
+  agents.owner: some
+  # For each agent, is it written down which tools and data it may use, and which of its actions are high risk?
+  # none | some | all
+  agents.reach: none
+
+  # Who may approve what
+  # When an agent needs approval for something outside its normal permissions, who decides?
+  # no_one | informal | named_role
+  approval.named: informal
+  # Can an agent's owner, or the person the agent acts for, approve that agent's own request?
+  # yes | not_prevented | prevented
+  approval.self: not_prevented
+  # When someone approves, do they see exactly what they are approving: the agent, the person it acts for, the tool and the parameters?
+  # no | partly | yes
+  approval.context: partly
+
+  # What happens when nobody answers
+  # If the approver does not respond, does the request move to someone else?
+  # no | ad_hoc | defined
+  escalation.path: ad_hoc
+  # Do approvals expire, and are they tied to the one request they approve?
+  # no | some | all
+  escalation.expiry: no
+  # While a request waits for a decision, what does the agent do?
+  # proceeds | held_no_rule | rule_by_risk
+  escalation.waiting: held_no_rule
+
+  # How the rules change
+  # Does a change to an agent's permissions need approval from someone other than its author?
+  # no | sometimes | always
+  policy_change.second_person: always
+  # Does a change that affects a team's systems need that team's sign-off?
+  # no | informal | required
+  policy_change.owners: informal
+  # Can you say which version of the rules was in force when a given decision was made?
+  # no | partly | yes
+  # policy_change.versioning:
+
+  # What record exists
+  # Is every approval and refusal recorded with who decided, when and why?
+  # no | partly | yes
+  record.decisions: partly
+  # Could the record be changed or deleted without anyone noticing?
+  # yes | logged | no
+  record.tamper: unknown
+  # Does the record show both the agent and the person it acted for, with a distinct identity for each agent?
+  # no | agent_only | both
+  record.identity: agent_only
+
+# Optional: one line of context per question, shown on the result.
+notes:
+  agents.owner: Finance agents have named owners; customer support agents do not.
+  approval.named: Usually the engineer who built the agent.
