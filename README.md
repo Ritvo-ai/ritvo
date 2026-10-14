@@ -29,7 +29,7 @@ The design is in [docs/PRD.md](docs/PRD.md) (what and why) and [docs/SPEC.md](do
 
 ## Quick start
 
-There is nothing to run yet beyond the CLI entry point. To install from source:
+The first working command is the authority gap review. To install from source:
 
 ```sh
 git clone https://github.com/Ritvo-ai/ritvo.git
@@ -40,7 +40,18 @@ pip install -e .
 ritvo --version
 ```
 
-The quick start will cover `ritvo inspect` and `ritvo review` as they land, and `ritvo demo` on `examples/mcp-demo` after that.
+### Authority gap review
+
+Answer 17 questions about how your organisation governs its agents, then score them:
+
+```sh
+cp examples/review/answers.yaml my-answers.yaml   # edit the answers
+ritvo review my-answers.yaml
+```
+
+`ritvo review` prints one line per area and writes `review.html` beside the answers file: a one-page, self-contained result that works offline and prints on one page. It reads the one file and connects to nothing. Keep real answers out of public repositories. The questions and scoring are in [docs/SPEC.md](docs/SPEC.md) section 8.1.
+
+The quick start will cover `ritvo inspect` as it lands, and `ritvo demo` on `examples/mcp-demo` after that.
 
 ## Getting help
 

@@ -433,7 +433,7 @@ Files in, report out. Areas of the gap review: which agents exist and what they 
 
 ### 8.1 Gap review
 
-`ritvo review <answers.yaml>` reads a file of answers to 15 fixed questions, three per area, scores each area, and writes a one-page result. It reads one file, makes no network calls and holds no credential.
+`ritvo review <answers.yaml>` reads a file of answers to 17 fixed questions in the five areas, scores each area, and writes a one-page result. It reads one file, makes no network calls and holds no credential.
 
 Levels, used for each question and each area:
 
@@ -452,15 +452,17 @@ Questions. Every question also accepts `unknown`, which scores `gap`.
 | **Agents and what they can do** | | | | |
 | `agents.inventory` | Is there a list of every AI agent in use, including those built outside the central IT or platform team? | `none` | `partial` | `complete` |
 | `agents.owner` | Does every agent have a named person who is accountable for it? | `none` | `some` | `all` |
-| `agents.reach` | For each agent, is it written down which tools and data it may use, and which of its actions are high risk? | `none` | `some` | `all` |
+| `agents.reach` | For each agent, is it written down what it can access and do, and which of its actions are high risk? | `none` | `some` | `all` |
+| `agents.new_tools` | When a new tool or capability becomes available to an agent, what happens before the agent can use it? | `automatic` | `informal` | `needs_decision` |
 | **Who may approve what** | | | | |
 | `approval.named` | When an agent needs approval for something outside its normal permissions, who decides? | `no_one` | `informal` | `named_role` |
-| `approval.self` | Can an agent's owner, or the person the agent acts for, approve that agent's own request? | `yes` | `not_prevented` | `prevented` |
-| `approval.context` | When someone approves, do they see exactly what they are approving: the agent, the person it acts for, the tool and the parameters? | `no` | `partly` | `yes` |
+| `approval.self` | Can an agent's owner, or the person who asked the agent to do the task, approve that agent's own request? | `yes` | `not_prevented` | `prevented` |
+| `approval.context` | When someone approves, do they see exactly what they are approving: the agent, the person who asked the agent to do the task, the tool and the parameters? | `no` | `partly` | `yes` |
 | **What happens when nobody answers** | | | | |
 | `escalation.path` | If the approver does not respond, does the request move to someone else? | `no` | `ad_hoc` | `defined` |
 | `escalation.expiry` | Do approvals expire, and are they tied to the one request they approve? | `no` | `some` | `all` |
 | `escalation.waiting` | While a request waits for a decision, what does the agent do? | `proceeds` | `held_no_rule` | `rule_by_risk` |
+| `escalation.stop` | Can an agent be suspended immediately during a run, and is it decided who may do it? | `no` | `informal` | `named_role` |
 | **How the rules change** | | | | |
 | `policy_change.second_person` | Does a change to an agent's permissions need approval from someone other than its author? | `no` | `sometimes` | `always` |
 | `policy_change.owners` | Does a change that affects a team's systems need that team's sign-off? | `no` | `informal` | `required` |
@@ -468,9 +470,9 @@ Questions. Every question also accepts `unknown`, which scores `gap`.
 | **What record exists** | | | | |
 | `record.decisions` | Is every approval and refusal recorded with who decided, when and why? | `no` | `partly` | `yes` |
 | `record.tamper` | Could the record be changed or deleted without anyone noticing? | `yes` | `logged` | `no` |
-| `record.identity` | Does the record show both the agent and the person it acted for, with a distinct identity for each agent? | `no` | `agent_only` | `both` |
+| `record.identity` | Does the record show both the agent and the person who asked the agent to do the task, with a distinct identity for each agent? | `no` | `agent_only` | `both` |
 
-Answer values use these option IDs. For `record.tamper`, `logged` means changes are possible but are themselves logged; `no` means the record is append-only or tamper-evident.
+Answer values use these option IDs. For `record.tamper`, `logged` means changes are possible but are themselves logged; `no` means the record is append-only or tamper-evident. For `agents.new_tools`, `automatic` means the agent can use a new tool as soon as it appears. For `escalation.stop`, `informal` means an agent can be stopped but nobody is named to do it.
 
 Answers file:
 
