@@ -10,7 +10,7 @@ readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"
-authors = [{ name = "Sunil Kalkunte" }]
+authors = [{ name = "Sunil Kalkunte", email = "11992509+sunilkalkunte@users.noreply.github.com" }]
 keywords = ["ai-agents", "mcp", "authorization", "governance", "approvals", "audit"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
@@ -38,11 +38,11 @@ dev = [
 ritvo = "ritvo.cli.main:app"
 
 [project.urls]
-Homepage = "https://github.com/Ritvo-ai/ritvo"
-Source = "https://github.com/Ritvo-ai/ritvo"
-Issues = "https://github.com/Ritvo-ai/ritvo/issues"
-Changelog = "https://github.com/Ritvo-ai/ritvo/blob/main/CHANGELOG.md"
-Security = "https://github.com/Ritvo-ai/ritvo/security/policy"
+Homepage = "https://ritvo.ai"
+Source = "https://github.com/ritvo-ai/ritvo"
+Issues = "https://github.com/ritvo-ai/ritvo/issues"
+Changelog = "https://github.com/ritvo-ai/ritvo/blob/main/CHANGELOG.md"
+Security = "https://github.com/ritvo-ai/ritvo/security/policy"
 
 [tool.hatch.version]
 path = "ritvo/__init__.py"
@@ -51,7 +51,16 @@ path = "ritvo/__init__.py"
 packages = ["ritvo"]
 
 [tool.hatch.build.targets.sdist]
-include = ["ritvo", "tests", "docs", "LICENSE", "NOTICE", "README.md", "CHANGELOG.md"]
+include = [
+  "ritvo",
+  "tests",
+  "docs",
+  ".github/scripts/check_attribution.py",
+  "LICENSE",
+  "NOTICE",
+  "README.md",
+  "CHANGELOG.md",
+]
 
 [tool.ruff]
 line-length = 100

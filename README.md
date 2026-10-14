@@ -6,7 +6,7 @@ The name comes from the Sanskrit *ṛta*, the right order of things.
 
 ## Status
 
-**Early, pre-alpha.** Nothing here is ready for production use. Interfaces, file formats and commands will change without notice until the first tagged release. See [CHANGELOG.md](CHANGELOG.md) for what exists today.
+**Early, pre-alpha.** The `ritvo` package on PyPI (version 0.0.1.dev0) is a placeholder that reserves the name. It contains only the `ritvo --version` command and no features. Nothing here is ready for production use. Interfaces, file formats and commands will change without notice until the first feature release, v0.1. See [CHANGELOG.md](CHANGELOG.md) for what exists today.
 
 ## Where Ritvo sits
 
