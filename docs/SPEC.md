@@ -342,6 +342,7 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | --- | --- |
 | `ritvo review <answers.yaml>` | One-page authority gap result |
 | `ritvo diagnose` | Draft `ritvo.yaml`, authority matrix, gap report from files |
+| `ritvo diagnose --templates <dir>` | Write the blank intake templates |
 | `ritvo inspect` | Local scan; writes `inventory.json` |
 | `ritvo import <inventory.json>` | Create a draft change request from an inventory |
 | `ritvo import-doa <matrix.csv>` | Draft bindings and roles from a delegation-of-authority matrix |
@@ -505,6 +506,62 @@ Output:
 - It MUST NOT contain the answers file's path. Notes are shown as plain text, escaped.
 - The terminal prints one line per area with its level and the path of the written file.
 - Exit status: 0 when the result is written, whatever the levels; non-zero when the answers file is invalid.
+
+### 8.2 Intake templates
+
+Three CSV files record what an organisation has today: its agents, the tools they use, and the people who own and approve them. `ritvo diagnose` reads them, with a registry export or a delegation-of-authority matrix where available, to draft `ritvo.yaml` and run the gap rules. A file filled in for a real organisation is client data and MUST NOT be committed to a public repository.
+
+`ritvo diagnose --templates <dir>` writes the three blank templates into `<dir>`, each one a header row only, and creates `<dir>` if it does not exist. If any of the three files already exists it writes nothing and exits non-zero. It reads no other file and makes no network calls. Filled-in examples for a fictional organisation are in `examples/intake/`.
+
+File format, for all three files:
+
+- UTF-8, with or without a byte order mark. Comma-separated, quoted as in RFC 4180.
+- The first row is the header. Column names are exact and lower case; their order is free. An unknown or repeated column, or a missing required column, is an error that names the valid columns.
+- A list cell holds values separated by `;`. Spaces around values are ignored.
+- An empty cell means not known, and `unknown` means the same where a column takes fixed values. Not known is never read as a safe default: an empty `tier` is not `low`, and an empty `owner` is not an owner.
+- Rows whose cells are all empty are ignored.
+- An ID is 1 to 64 characters from `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or digit. IDs are unique within their file. Role names follow the same rule.
+
+`agents.csv`:
+
+| Column | Required | Meaning |
+| --- | --- | --- |
+| `agent_id` | yes | The agent's ID; becomes `agents[].id` |
+| `name` | no | Display name |
+| `platform` | no | Where the agent runs, as free text, for example `copilot-studio` or `custom` |
+| `built_by_team` | no | The team that built it |
+| `owner` | no | The `person_id` of the person accountable for it |
+| `owner_team` | no | The team accountable for it |
+| `mode` | no | `attended`, `unattended` or `both` |
+| `credential` | no | The name of the credential, key or service account the agent uses to call tools. A name only, never a value |
+| `tools` | no | List of the `tool_id`s the agent can use today |
+
+`tools.csv`:
+
+| Column | Required | Meaning |
+| --- | --- | --- |
+| `tool_id` | yes | The tool's ID; becomes `tools[].id` |
+| `system` | no | The system or server the tool acts on |
+| `access` | no | `read` or `write`. Anything that changes or deletes data, sends a message or moves money is `write` |
+| `description` | no | One line on what the tool does |
+| `tier` | no | `low`, `medium` or `high` |
+| `owner_team` | no | The team that owns the system; becomes the `owner_team` of bindings to this tool |
+| `approval_ttl_minutes` | no | A whole number of minutes, at least 1; becomes `tools[].approval_ttl_minutes` |
+
+`people.csv`:
+
+| Column | Required | Meaning |
+| --- | --- | --- |
+| `person_id` | yes | The ID used in `owner` and `deputy`. Use an ID, not an email address or full name |
+| `team` | no | The person's team |
+| `roles` | no | List of role names, for example `policy_author; escalation_reviewer; finance` |
+| `deputy` | no | The `person_id` who acts when this person is absent; never the person themselves |
+
+Validation:
+
+- `owner` and `deputy` MUST name a person in `people.csv`, and `tools` MUST name tools in `tools.csv`, when that file is given. Any of the three files may be absent; references into an absent file are not checked.
+- An error gives the file name, line and column, and nothing is written. An error MUST NOT echo a cell's content, except an ID or a fixed value, shortened to 40 characters.
+- The `credential` column is compared across agents to find shared keys (section 8). Its value is never written to a report or to the draft `ritvo.yaml`.
 
 ## 9. Security requirements
 
