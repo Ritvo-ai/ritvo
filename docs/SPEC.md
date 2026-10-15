@@ -180,23 +180,38 @@ Fields: `event_id`, `timestamp`, `principal` (subject, actor, chain, mode), `bou
 
 ### 4.8 Inventory
 
+`inventory.json` is what the inspector writes and what `ritvo import`, `ritvo diagnose` and the inspect report read. It is one UTF-8 JSON object. An inventory made for a real organisation is client data and MUST NOT be committed to a public repository.
+
 ```yaml
 schema_version: 0
 generated_at: 2026-10-13T09:30:00Z
-tool: ritvo-inspect 0.1
+tool: ritvo-inspect 0.1.0
 manifest:                       # exactly what was read
-  paths: [ ./services/agent-a ]
+  paths: [ ./services/agent-a, ./exports/runtimes.json ]
   files_read: 41
+  unreadable: []
   servers_contacted: [ demo-mcp ]
   env_names_seen: [ ANTHROPIC_BASE_URL ]   # names only, never values
+  registry_exports:
+    - platform: agentcore
+      sha256: 9f2c...
+      agents: 3
 agents:
   - id: acme.research
     source: code                # code | config | registry | middleware
+    name: null
+    platform: null
+    platform_ref: null
     framework: langgraph        # when detected
     owner: null                 # unknown until assigned
+    owner_team: null
+    credential: null
 mcp_servers:
   - id: demo-mcp
+    source: config
     transport: http             # http | stdio
+    url: https://mcp.example.com/mcp
+    command: null
     auth:
       protected_resource_metadata: true
       authorization_servers: [ https://idp.example.com ]
@@ -213,11 +228,51 @@ identity:
 findings:
   - rule: agent.no_owner
     subject: acme.research
+    agents: [ acme.research ]
   - rule: mcp.no_auth
     subject: demo-mcp
+    agents: []
 ```
 
-An inventory MUST NOT contain secret values, raw config text, tokens or prompts.
+Fields. Every field listed is present; `null` means not known, never a safe default. IDs follow the rule in section 8.2, except tool IDs, which are `<server id>/<tool name>`.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `schema_version` | integer | `0` |
+| `generated_at` | string | RFC 3339 time in UTC, ending `Z` |
+| `tool` | string | `ritvo-inspect` and the package version |
+| `manifest.paths` | strings | Every path the operator named or the inspector checked, found or not |
+| `manifest.files_read` | integer | Number of files read |
+| `manifest.unreadable` | strings | Paths that could not be read or parsed; their contents are never echoed |
+| `manifest.servers_contacted` | strings | IDs of MCP servers contacted; empty unless `--connect` was used |
+| `manifest.env_names_seen` | strings | Environment variable names seen, never values |
+| `manifest.registry_exports` | objects | One per registry export read: `platform`, the file's `sha256`, and the number of `agents` taken from it |
+| `agents[].id` | ID | Unique in the inventory |
+| `agents[].source` | string | `code`, `config`, `registry` or `middleware` |
+| `agents[].name` | string or null | Display name |
+| `agents[].platform` | string or null | For example `agentcore` or `vertex` |
+| `agents[].platform_ref` | string or null | The platform's own identifier, such as an ARN or resource name |
+| `agents[].framework` | string or null | For example `langgraph` |
+| `agents[].owner` | ID or null | The accountable person |
+| `agents[].owner_team` | ID or null | The accountable team |
+| `agents[].credential` | string or null | The name of the identity the agent runs as, such as a role ARN or service account. A name only, never a value |
+| `mcp_servers[].id` | ID | Unique in the inventory |
+| `mcp_servers[].source` | string | `config` or `middleware` |
+| `mcp_servers[].transport` | string | `http` or `stdio` |
+| `mcp_servers[].url` | string or null | For `http`, without query string or fragment |
+| `mcp_servers[].command` | string or null | For `stdio`, the executable name only, never its arguments |
+| `mcp_servers[].auth` | object or null | `null` until the server is introspected; then `protected_resource_metadata` (boolean), `authorization_servers` and `scopes_supported` (strings) |
+| `tools[].id` | string | `<server id>/<tool name>` |
+| `tools[].server` | ID | The `mcp_servers[].id` it belongs to |
+| `tools[].description_hash`, `tools[].input_schema_hash` | string | `sha256:` and the hex digest of the canonical JSON; never the text |
+| `tools[].annotations` | object | `readOnly`, `destructive`, `idempotent`, `openWorld`: each boolean or null |
+| `tools[].proposed_tier` | string or null | `low`, `medium` or `high`; a proposal only |
+| `identity.issuers` | strings | Token issuers seen |
+| `findings[].rule` | string | One of the finding rules in section 7 |
+| `findings[].subject` | string | What the finding is about: an agent, server or tool ID, or a credential or environment variable name |
+| `findings[].agents` | IDs | The agents involved, possibly none |
+
+A reader MUST reject a file with another `schema_version`, a missing field or an unknown field, and name the field. An inventory MUST NOT contain secret values, raw config text, tokens, prompts, tool descriptions or environment variable values.
 
 ## 5. Behaviour
 
@@ -344,6 +399,7 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | `ritvo diagnose` | Draft `ritvo.yaml`, authority matrix, gap report from files |
 | `ritvo diagnose --templates <dir>` | Write the blank intake templates |
 | `ritvo inspect` | Local scan; writes `inventory.json` |
+| `ritvo inspect --registry <platform>:<file>` | Read a platform's agent export into `inventory.json` |
 | `ritvo import <inventory.json>` | Create a draft change request from an inventory |
 | `ritvo import-doa <matrix.csv>` | Draft bindings and roles from a delegation-of-authority matrix |
 | `ritvo init [--questionnaire]` | Build `ritvo.yaml` |
@@ -365,7 +421,7 @@ Sources in v0:
 | --- | --- | --- | --- |
 | MCP configuration files | Server entries (name, transport, command or URL) in operator-named paths | No | 0 |
 | Code and environment scan | Framework imports and the names of environment variables such as `*_BASE_URL` and `*_API_KEY`, never values, in operator-named directories | No | 0 |
-| Registry export | A client platform's agent export file, mapped by an adapter in `connectors/registry` | No | 0 |
+| Registry export | A client platform's agent export file, mapped by an adapter in `connectors/registry` (section 7.3) | No | 0 |
 | MCP introspection | `initialize` and `tools/list` on a named server; tool annotations; for HTTP servers the OAuth protected resource metadata (RFC 9728) | Yes, with consent | 1 |
 | Middleware self-report | The middleware sends `inventory.reported` at start-up | Already inside the client | 2 |
 
@@ -376,7 +432,7 @@ Rules:
 - Never read environment values or print secrets. Config files are parsed in memory; values matching secret patterns are dropped before anything is written.
 - Spawning a stdio MCP server runs the command in the config file. The inspector MUST NOT do so unless the operator passes `--connect` and confirms each server; it SHOULD suggest running in a sandbox.
 - Tier proposals come from MCP annotations: destructive → `high`, read-only → `low`, otherwise `medium`. They are proposals, never decisions.
-- Findings are inventory facts, not security verdicts. Rules in v0: `agent.no_owner`, `mcp.no_auth`, `tool.destructive_unowned`, `identity.shared_key_name`.
+- Findings are inventory facts, not security verdicts. Rules in v0: `agent.no_owner`, `mcp.no_auth`, `tool.destructive_unowned`, `identity.shared_key_name`. `agent.no_owner` is an agent whose `owner` is null. `identity.shared_key_name` is a credential or key name used by two or more agents. The other two are defined with the sources that produce them.
 
 Feeding Ritvo: `ritvo import inventory.json` creates a draft change request containing new agents (owner unassigned blocks approval), tools with proposed tiers, and no bindings. It goes through the normal sign-off flow and the authority diff. It never edits `ritvo.yaml` directly. `ritvo diagnose` runs the gap rules over the draft. Re-running the inspector and importing again produces a diff of what changed.
 
@@ -427,6 +483,41 @@ Views and what each one holds:
 The starter control mapping covers inventory, named ownership, access control on tool servers, human oversight and logging. It is a starting point to review with a compliance lead and is not a conformity assessment. Areas the scan cannot see are marked not assessed.
 
 Design reference: `docs/design/inspect-report-sample.html` is a sample with fictional data. It is a design target, not a template. The shipped report must not load web fonts or any remote resource.
+
+### 7.3 Registry exports
+
+`ritvo inspect --registry <platform>:<file>` reads an agent list that the operator exported from a client platform with that platform's own tool, and writes its agents to `inventory.json` with `source: registry`. It reads only the named files and never calls the platform. `--registry` may be given more than once. `--out` sets the inventory path; the default is `inventory.json` in the current directory. Each run writes a new inventory from the sources it is given. Until the other phase 0 sources land, `ritvo inspect` needs at least one `--registry`.
+
+Platforms:
+
+| Platform | Export | Accepted file |
+| --- | --- | --- |
+| `agentcore` (AWS Bedrock AgentCore Runtime) | `aws bedrock-agentcore-control list-agent-runtimes --output json`; optionally `aws bedrock-agentcore-control get-agent-runtime --agent-runtime-id <id> --output json` for each runtime | An object with `agentRuntimes` (list output), or one runtime object with `agentRuntimeArn` at the top (get output) |
+| `vertex` (Google Vertex AI Agent Engine) | The `reasoningEngines.list` or `reasoningEngines.get` REST method, saved as JSON | An object with `reasoningEngines`, a JSON array of reasoning engines, or one reasoning engine object with `name` at the top |
+
+Mapping to `agents[]`:
+
+| Field | `agentcore` | `vertex` |
+| --- | --- | --- |
+| `id` | `agentcore.` and `agentRuntimeName` in lower case | `vertex.` and the last segment of `name` |
+| `name` | `agentRuntimeName` | `displayName` |
+| `platform` | `agentcore` | `vertex` |
+| `platform_ref` | `agentRuntimeArn` | `name` |
+| `framework` | null | `spec.agentFramework` |
+| `owner` | null | label `ritvo-owner` |
+| `owner_team` | null | label `ritvo-owner-team` |
+| `credential` | `roleArn` (get output only) | `spec.effectiveIdentity`, else `spec.serviceAccount`, else null |
+
+Rules:
+
+- The reader copies only the fields in the mapping. It MUST NOT copy environment variables (`environmentVariables` in AgentCore, `spec.deploymentSpec` in Vertex) or any other field, and their values never reach the inventory, the terminal or an error. Unknown fields are ignored.
+- A file with a non-empty `nextToken` (AgentCore) or `nextPageToken` (Vertex) holds one page only. The inspector stops with an error saying to export every page, and writes nothing.
+- The same agent in several files (the same `platform_ref`) is one agent; a field that is null in one file takes the value from another. Two different `platform_ref` values that give the same `id` are an error.
+- Owners come only from the two Vertex labels. A label value that is not a valid ID is ignored, the owner stays null, and the terminal names the agent and the label. Vertex label values cannot contain `.`, so an owner named in a label needs an ID without one. AgentCore exports carry no tags, so AgentCore owners are null until assigned through `agents.csv` (section 8.2) or `ritvo import`.
+- A missing `agentRuntimeArn` or `agentRuntimeName` (AgentCore), or `name` (Vertex), is an error. Errors give the file name and the agent's position in the file, never field values other than IDs, and nothing is written.
+- Findings from this source: `agent.no_owner` for each agent whose owner is null, and `identity.shared_key_name` for each credential that two or more agents share, with `subject` the credential and `agents` the agents that share it.
+- The manifest lists each file in `paths`, counts it in `files_read`, and adds one `registry_exports` entry per file.
+- The terminal prints the number of agents read from each file, the number of findings by rule, and the path written. Exit status: 0 when the inventory is written, non-zero otherwise.
 
 ## 8. Diagnostic
 

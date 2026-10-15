@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `ritvo review <answers.yaml>`: the authority gap review. Scores 17 answers in five areas and writes a self-contained one-page `review.html`. Example answers in `examples/review/answers.yaml`.
 - Specification of the intake templates (`docs/SPEC.md` section 8.2): `agents.csv`, `tools.csv` and `people.csv`, their columns and validation.
 - `ritvo diagnose --templates <dir>`: writes the blank intake templates and never overwrites a file. A reader validates filled-in templates for the diagnostic. Examples in `examples/intake/`.
+- Specification of the inventory format (`docs/SPEC.md` section 4.8) and of registry exports from AWS Bedrock AgentCore and Google Vertex AI Agent Engine (section 7.3).
 - Runtime dependencies Jinja2, Pydantic and PyYAML.
 - Continuous integration on Linux, macOS and Windows: lint, type check, tests, licence check, secret scan, wheel build and install test, CodeQL, and commit hygiene.
 - Release workflow: on a `v*` tag, test, build, check that the tag matches the package version, attest build provenance, and publish to PyPI by trusted publishing after approval.
