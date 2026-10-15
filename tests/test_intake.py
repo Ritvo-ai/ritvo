@@ -1,0 +1,307 @@
+import re
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from ritvo.cli.main import app
+from ritvo.diagnostic.intake.columns import AGENTS, INTAKE_FILES, PEOPLE, TOOLS, Access, Mode, Tier
+from ritvo.diagnostic.intake.reader import Intake, IntakeError, load_intake
+from ritvo.diagnostic.intake.templates import write_templates
+
+ROOT = Path(__file__).resolve().parents[1]
+EXAMPLES = ROOT / "examples" / "intake"
+SPEC = ROOT / "docs" / "SPEC.md"
+
+runner = CliRunner()
+
+AGENTS_HEADER = "agent_id,name,platform,built_by_team,owner,owner_team,mode,credential,tools\n"
+TOOLS_HEADER = "tool_id,system,access,description,tier,owner_team,approval_ttl_minutes\n"
+PEOPLE_HEADER = "person_id,team,roles,deputy\n"
+
+
+def _load(tmp_path: Path, **files: str) -> Intake:
+    for name, text in files.items():
+        (tmp_path / f"{name}.csv").write_text(text, encoding="utf-8", newline="")
+    return load_intake(tmp_path)
+
+
+def _error(tmp_path: Path, **files: str) -> str:
+    with pytest.raises(IntakeError) as info:
+        _load(tmp_path, **files)
+    return str(info.value)
+
+
+# Columns match the spec
+
+
+def _spec_columns(file_name: str) -> list[tuple[str, bool]]:
+    section = SPEC.read_text(encoding="utf-8").split("### 8.2 Intake templates", 1)[1]
+    table = section.split(f"`{file_name}`:", 1)[1].split("\n\n", 2)[1]
+    rows = []
+    for line in table.splitlines()[2:]:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        rows.append((cells[0].strip("`"), cells[1] == "yes"))
+    return rows
+
+
+def test_columns_match_spec_tables() -> None:
+    for file in INTAKE_FILES:
+        expected = [(column.name, column.required) for column in file.columns]
+        assert _spec_columns(file.name) == expected
+
+
+def test_fixed_values() -> None:
+    assert [mode.value for mode in Mode] == ["attended", "unattended", "both"]
+    assert [access.value for access in Access] == ["read", "write"]
+    assert [tier.value for tier in Tier] == ["low", "medium", "high"]
+
+
+# Templates
+
+
+def test_write_templates(tmp_path: Path) -> None:
+    target = tmp_path / "new" / "intake"
+    written = write_templates(target)
+    assert [path.name for path in written] == ["agents.csv", "tools.csv", "people.csv"]
+    assert (target / "agents.csv").read_bytes() == AGENTS_HEADER.encode()
+    assert (target / "tools.csv").read_bytes() == TOOLS_HEADER.encode()
+    assert (target / "people.csv").read_bytes() == PEOPLE_HEADER.encode()
+    intake = load_intake(target)
+    assert intake == Intake(agents=(), tools=(), people=())
+
+
+def test_templates_never_overwrite(tmp_path: Path) -> None:
+    (tmp_path / "tools.csv").write_text("mine\n", encoding="utf-8")
+    with pytest.raises(IntakeError, match=r"tools\.csv; nothing was written"):
+        write_templates(tmp_path)
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["tools.csv"]
+    assert (tmp_path / "tools.csv").read_text(encoding="utf-8") == "mine\n"
+
+
+def test_templates_target_is_a_file(tmp_path: Path) -> None:
+    target = tmp_path / "file"
+    target.write_text("", encoding="utf-8")
+    with pytest.raises(IntakeError, match="is not a directory"):
+        write_templates(target)
+
+
+# Reading
+
+
+def test_example_files_load() -> None:
+    intake = load_intake(EXAMPLES)
+    assert intake.agents is not None and intake.tools is not None and intake.people is not None
+    assert len(intake.agents) == 4
+    assert len(intake.tools) == 6
+    assert len(intake.people) == 5
+    matcher = intake.agents[0]
+    assert matcher.agent_id == "exl.ap_matcher"
+    assert matcher.owner == "amara"
+    assert matcher.mode is Mode.UNATTENDED
+    assert matcher.tools == ("erp.invoice_read", "erp.payment_create")
+    payment = intake.tools[1]
+    assert (payment.tier, payment.access, payment.approval_ttl_minutes) == (
+        Tier.HIGH,
+        Access.WRITE,
+        15,
+    )
+    assert intake.tools[5].description == "Change a shipment's route, carrier or date"
+
+
+def test_example_files_are_fictional() -> None:
+    for file in INTAKE_FILES:
+        text = (EXAMPLES / file.name).read_text(encoding="utf-8")
+        assert "@" not in text
+
+
+def test_absent_files_are_none(tmp_path: Path) -> None:
+    intake = _load(tmp_path, agents=AGENTS_HEADER + "a1,,,,someone,,,,t1\n")
+    assert intake.tools is None
+    assert intake.people is None
+    assert intake.agents is not None
+    # References into an absent file are not checked.
+    assert intake.agents[0].owner == "someone"
+    assert intake.agents[0].tools == ("t1",)
+
+
+def test_empty_and_unknown_mean_not_known(tmp_path: Path) -> None:
+    intake = _load(
+        tmp_path,
+        tools=TOOLS_HEADER + "t1,,unknown,,unknown,,\nt2, , , , , , \n",
+    )
+    assert intake.tools is not None
+    for tool in intake.tools:
+        assert tool.access is None
+        assert tool.tier is None
+        assert tool.system is None
+        assert tool.approval_ttl_minutes is None
+
+
+def test_format_details(tmp_path: Path) -> None:
+    text = '﻿roles , deputy,person_id\r\n" a ; b ;; c ;",,p1\r\n,,\r\n\r\nx,p1,p2\r\n'
+    intake = _load(tmp_path, people=text)
+    assert intake.people is not None
+    assert [person.person_id for person in intake.people] == ["p1", "p2"]
+    assert intake.people[0].roles == ("a", "b", "c")
+    assert intake.people[0].deputy is None
+    assert intake.people[1].roles == ("x",)
+    assert intake.people[1].deputy == "p1"
+
+
+def test_short_rows_leave_cells_empty(tmp_path: Path) -> None:
+    intake = _load(tmp_path, agents=AGENTS_HEADER + "a1,Agent one\n")
+    assert intake.agents is not None
+    assert intake.agents[0].name == "Agent one"
+    assert intake.agents[0].owner is None
+
+
+def test_quoted_newline_keeps_line_numbers(tmp_path: Path) -> None:
+    message = _error(
+        tmp_path,
+        tools=TOOLS_HEADER + 't1,,,"two\nlines",,,\nt2,,,,top,,\n',
+    )
+    assert "tools.csv line 4, column tier" in message
+
+
+# Errors
+
+
+@pytest.mark.parametrize(
+    ("files", "message"),
+    [
+        ({"agents": ""}, "agents.csv has no header row"),
+        (
+            {"agents": "agent_id,colour\n"},
+            "agents.csv line 1, column 2: unknown column; valid columns: agent_id, name,",
+        ),
+        ({"agents": "agent_id,name,name\n"}, "line 1, column 3: repeated column name"),
+        ({"tools": "system\n"}, "tools.csv line 1: missing required column tool_id"),
+        ({"agents": "agent_id,name\n,x\n"}, "agents.csv line 2, column agent_id: required"),
+        ({"agents": "agent_id\nA1\n"}, "column agent_id: not a valid ID"),
+        ({"agents": "agent_id\n.a\n"}, "not a valid ID"),
+        ({"agents": "agent_id\n" + "a" * 65 + "\n"}, "not a valid ID"),
+        (
+            {"agents": "agent_id\na1\na2\na1\n"},
+            "line 4, column agent_id: duplicate ID 'a1', first on line 2",
+        ),
+        (
+            {"agents": "agent_id,mode\na1,Attended\n"},
+            "must be one of attended, unattended, both, unknown, or empty",
+        ),
+        (
+            {"tools": "tool_id,tier\nt1,critical\n"},
+            "must be one of low, medium, high, unknown, or empty",
+        ),
+        ({"tools": "tool_id,access\nt1,delete\n"}, "must be one of read, write, unknown, or empty"),
+        ({"tools": "tool_id,approval_ttl_minutes\nt1,0\n"}, "at least 1"),
+        ({"tools": "tool_id,approval_ttl_minutes\nt1,-5\n"}, "at least 1"),
+        ({"tools": "tool_id,approval_ttl_minutes\nt1,1.5\n"}, "at least 1"),
+        ({"tools": "tool_id,approval_ttl_minutes\nt1,²\n"}, "at least 1"),
+        ({"agents": "agent_id,tools\na1,t1;t1\n"}, "column tools: 't1' is listed twice"),
+        ({"agents": "agent_id,tools\na1,t1;T 2\n"}, "column tools: not a valid ID"),
+        ({"people": "person_id,roles\np1,Finance Lead\n"}, "column roles: not a valid ID"),
+        (
+            {"agents": "agent_id\na1,extra\n"},
+            "agents.csv line 2: 2 cells but the header has 1 columns",
+        ),
+        ({"agents": 'agent_id\n"a1\n'}, "agents.csv line 2: not valid CSV"),
+        (
+            {"agents": "agent_id,owner\na1,bob\n", "people": PEOPLE_HEADER + "alice,,,\n"},
+            "agents.csv line 2, column owner: 'bob' is not in people.csv",
+        ),
+        (
+            {"agents": "agent_id,tools\na1,t1;t9\n", "tools": "tool_id\nt1\n"},
+            "agents.csv line 2, column tools: 't9' is not in tools.csv",
+        ),
+        ({"people": "person_id,deputy\np1,p2\n"}, "column deputy: 'p2' is not in people.csv"),
+        ({"people": "person_id,deputy\np1,p1\n"}, "a person cannot be their own deputy"),
+    ],
+)
+def test_invalid_files(tmp_path: Path, files: dict[str, str], message: str) -> None:
+    assert message in _error(tmp_path, **files)
+
+
+def test_not_utf8(tmp_path: Path) -> None:
+    (tmp_path / "people.csv").write_bytes(b"person_id,team\np1,\xff\n")
+    with pytest.raises(IntakeError, match=r"people\.csv is not UTF-8 text"):
+        load_intake(tmp_path)
+
+
+def test_not_a_directory(tmp_path: Path) -> None:
+    with pytest.raises(IntakeError, match="is not a directory"):
+        load_intake(tmp_path / "missing")
+
+
+def test_all_problems_reported_together(tmp_path: Path) -> None:
+    message = _error(
+        tmp_path,
+        agents="agent_id,mode\na1,sometimes\n",
+        tools="tool_id,tier\nt1,urgent\n",
+    )
+    assert "agents.csv line 2, column mode" in message
+    assert "tools.csv line 2, column tier" in message
+
+
+def test_errors_never_echo_cell_content(tmp_path: Path) -> None:
+    hidden = "Do-Not-Echo-This-Value"
+    message = _error(
+        tmp_path,
+        agents=f"agent_id,{hidden}\na1,x\n",
+    )
+    assert "line 1, column 2: unknown column" in message
+    assert hidden not in message
+    message = _error(
+        tmp_path,
+        agents=(
+            "agent_id,name,credential,mode,owner,tools\n"
+            f"Agent-{hidden},{hidden},{hidden},{hidden},{hidden},{hidden}\n"
+        ),
+    )
+    assert hidden not in message
+    assert "column agent_id" in message
+    assert "column mode" in message and "column owner" in message and "column tools" in message
+
+
+def test_credential_is_kept_as_given(tmp_path: Path) -> None:
+    intake = _load(
+        tmp_path,
+        agents=AGENTS_HEADER + "a1,,,,,,,shared-erp-key,\na2,,,,,,,shared-erp-key,\n",
+    )
+    assert intake.agents is not None
+    assert {agent.credential for agent in intake.agents} == {"shared-erp-key"}
+
+
+def test_file_names() -> None:
+    assert (AGENTS.name, TOOLS.name, PEOPLE.name) == ("agents.csv", "tools.csv", "people.csv")
+
+
+# CLI
+
+
+def test_cli_templates(tmp_path: Path) -> None:
+    target = tmp_path / "intake"
+    result = runner.invoke(app, ["diagnose", "--templates", str(target)])
+    assert result.exit_code == 0, result.output
+    assert sorted(path.name for path in target.iterdir()) == [
+        "agents.csv",
+        "people.csv",
+        "tools.csv",
+    ]
+    assert result.output.count("Wrote ") == 3
+
+
+def test_cli_templates_refuses_existing(tmp_path: Path) -> None:
+    (tmp_path / "agents.csv").write_text("mine\n", encoding="utf-8")
+    result = runner.invoke(app, ["diagnose", "--templates", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "error:" in result.output
+    assert re.search(r"agents\.csv; nothing was written", result.output)
+    assert not (tmp_path / "tools.csv").exists()
+    assert (tmp_path / "agents.csv").read_text(encoding="utf-8") == "mine\n"
+
+
+def test_cli_diagnose_needs_templates() -> None:
+    result = runner.invoke(app, ["diagnose"])
+    assert result.exit_code == 1
+    assert "--templates" in result.output

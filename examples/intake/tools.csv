@@ -1,0 +1,7 @@
+tool_id,system,access,description,tier,owner_team,approval_ttl_minutes
+erp.invoice_read,erp,read,Read invoices and purchase orders,low,finance,
+erp.payment_create,erp,write,Create a supplier payment,high,finance,15
+zendesk.ticket_read,zendesk,read,Read support tickets,low,support,
+zendesk.ticket_reply,zendesk,write,Reply to a customer on a ticket,medium,support,
+email.send,email,write,Send an email from the shared support mailbox,unknown,,
+tms.shipment_update,tms,write,"Change a shipment's route, carrier or date",,operations,

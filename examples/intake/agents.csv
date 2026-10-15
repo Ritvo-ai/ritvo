@@ -1,0 +1,5 @@
+agent_id,name,platform,built_by_team,owner,owner_team,mode,credential,tools
+exl.ap_matcher,Invoice matcher,custom,finance,amara,finance,unattended,erp-service-account,erp.invoice_read;erp.payment_create
+exl.support_triage,Support triage,copilot-studio,support,,support,attended,zendesk-api-key,zendesk.ticket_read;zendesk.ticket_reply;email.send
+exl.dispatch,Dispatch assistant,custom,operations,,,unattended,erp-service-account,tms.shipment_update;erp.invoice_read
+exl.research,Market research,custom,platform,jonas,platform,both,,

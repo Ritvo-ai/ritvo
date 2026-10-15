@@ -51,6 +51,16 @@ ritvo review my-answers.yaml
 
 `ritvo review` prints one line per area and writes `review.html` beside the answers file: a one-page, self-contained result that works offline and prints on one page. It reads the one file and connects to nothing. Keep real answers out of public repositories. The questions and scoring are in [docs/SPEC.md](docs/SPEC.md) section 8.1.
 
+### Intake templates
+
+Record your agents, the tools they use and the people who own and approve them, for `ritvo diagnose`:
+
+```sh
+ritvo diagnose --templates intake/   # writes blank agents.csv, tools.csv and people.csv
+```
+
+Fill them in with a spreadsheet; `examples/intake/` shows them filled in for a fictional organisation. An empty cell means not known. The command never overwrites a file. Filled-in templates are client data: keep them out of public repositories. The columns are in [docs/SPEC.md](docs/SPEC.md) section 8.2. The diagnostic that reads them is next.
+
 The quick start will cover `ritvo inspect` as it lands, and `ritvo demo` on `examples/mcp-demo` after that.
 
 ## Getting help

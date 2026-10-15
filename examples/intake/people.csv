@@ -1,0 +1,6 @@
+person_id,team,roles,deputy
+amara,finance,finance_approver;policy_author,wei
+wei,finance,finance_approver,
+jonas,platform,platform_lead;policy_author;escalation_reviewer,
+priya,support,support_lead,
+tomas,security,security_reviewer,jonas
