@@ -6,6 +6,8 @@ from typing import Annotated
 import typer
 
 from ritvo import __version__
+from ritvo.diagnostic.intake.reader import IntakeError
+from ritvo.diagnostic.intake.templates import write_templates
 from ritvo.diagnostic.review.questions import LEVEL_LABELS
 from ritvo.diagnostic.review.report import write_report
 from ritvo.diagnostic.review.scoring import ReviewError, load_answers, score
@@ -59,3 +61,24 @@ def review(
         detail = f" ({area.answered} of {len(area.questions)} answered)" if area.incomplete else ""
         typer.echo(f"{area.area.title:<{width}}  {LEVEL_LABELS[area.level]}{detail}")
     typer.echo(f"Wrote {target}")
+
+
+@app.command()
+def diagnose(
+    templates: Annotated[
+        Path,
+        typer.Option(
+            "--templates",
+            file_okay=False,
+            help="Write the blank intake templates (agents.csv, tools.csv, people.csv) here.",
+        ),
+    ],
+) -> None:
+    """Diagnose authority gaps from intake files. Reads files only."""
+    try:
+        written = write_templates(templates)
+    except IntakeError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    for path in written:
+        typer.echo(f"Wrote {path}")
