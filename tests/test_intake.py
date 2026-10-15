@@ -138,8 +138,54 @@ def test_empty_and_unknown_mean_not_known(tmp_path: Path) -> None:
         assert tool.approval_ttl_minutes is None
 
 
+def test_fixed_values_ignore_case(tmp_path: Path) -> None:
+    intake = _load(
+        tmp_path,
+        agents="agent_id,mode\na1,Attended\na2,UNATTENDED\na3,Unknown\n",
+        tools="tool_id,access,tier\nt1,Write,High\n",
+    )
+    assert intake.agents is not None and intake.tools is not None
+    assert [agent.mode for agent in intake.agents] == [Mode.ATTENDED, Mode.UNATTENDED, None]
+    assert (intake.tools[0].access, intake.tools[0].tier) == (Access.WRITE, Tier.HIGH)
+
+
+def test_ids_stay_exact(tmp_path: Path) -> None:
+    message = _error(tmp_path, agents="Agent_ID\na1\n")
+    assert "line 1, column 1: unknown column" in message
+
+
+def test_team_ids(tmp_path: Path) -> None:
+    intake = _load(
+        tmp_path,
+        agents="agent_id,built_by_team,owner_team\na1,platform,finance-ops\n",
+        tools="tool_id,owner_team\nt1,risk\n",
+        people="person_id,team\np1,support\n",
+    )
+    assert intake.agents is not None and intake.tools is not None and intake.people is not None
+    assert (intake.agents[0].built_by_team, intake.agents[0].owner_team) == (
+        "platform",
+        "finance-ops",
+    )
+    assert intake.tools[0].owner_team == "risk"
+    assert intake.people[0].team == "support"
+
+
+@pytest.mark.parametrize(
+    ("files", "column"),
+    [
+        ({"agents": "agent_id,built_by_team\na1,Platform\n"}, "built_by_team"),
+        ({"agents": "agent_id,owner_team\na1,finance ops\n"}, "owner_team"),
+        ({"tools": "tool_id,owner_team\nt1,Risk\n"}, "owner_team"),
+        ({"people": "person_id,team\np1,Customer Support\n"}, "team"),
+    ],
+)
+def test_team_must_be_an_id(tmp_path: Path, files: dict[str, str], column: str) -> None:
+    message = _error(tmp_path, **files)
+    assert f"line 2, column {column}: not a valid ID" in message
+
+
 def test_format_details(tmp_path: Path) -> None:
-    text = '﻿roles , deputy,person_id\r\n" a ; b ;; c ;",,p1\r\n,,\r\n\r\nx,p1,p2\r\n'
+    text = '\ufeffroles , deputy,person_id\r\n" a ; b ;; c ;",,p1\r\n,,\r\n\r\nx,p1,p2\r\n'
     intake = _load(tmp_path, people=text)
     assert intake.people is not None
     assert [person.person_id for person in intake.people] == ["p1", "p2"]
@@ -186,7 +232,7 @@ def test_quoted_newline_keeps_line_numbers(tmp_path: Path) -> None:
             "line 4, column agent_id: duplicate ID 'a1', first on line 2",
         ),
         (
-            {"agents": "agent_id,mode\na1,Attended\n"},
+            {"agents": "agent_id,mode\na1,always\n"},
             "must be one of attended, unattended, both, unknown, or empty",
         ),
         (
@@ -197,7 +243,7 @@ def test_quoted_newline_keeps_line_numbers(tmp_path: Path) -> None:
         ({"tools": "tool_id,approval_ttl_minutes\nt1,0\n"}, "at least 1"),
         ({"tools": "tool_id,approval_ttl_minutes\nt1,-5\n"}, "at least 1"),
         ({"tools": "tool_id,approval_ttl_minutes\nt1,1.5\n"}, "at least 1"),
-        ({"tools": "tool_id,approval_ttl_minutes\nt1,²\n"}, "at least 1"),
+        ({"tools": "tool_id,approval_ttl_minutes\nt1,\u00b2\n"}, "at least 1"),
         ({"agents": "agent_id,tools\na1,t1;t1\n"}, "column tools: 't1' is listed twice"),
         ({"agents": "agent_id,tools\na1,t1;T 2\n"}, "column tools: not a valid ID"),
         ({"people": "person_id,roles\np1,Finance Lead\n"}, "column roles: not a valid ID"),
@@ -303,5 +349,6 @@ def test_cli_templates_refuses_existing(tmp_path: Path) -> None:
 
 def test_cli_diagnose_needs_templates() -> None:
     result = runner.invoke(app, ["diagnose"])
-    assert result.exit_code == 1
+    assert result.exit_code == 2
+    assert "Missing option" in result.output
     assert "--templates" in result.output

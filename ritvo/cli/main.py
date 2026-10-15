@@ -66,21 +66,15 @@ def review(
 @app.command()
 def diagnose(
     templates: Annotated[
-        Path | None,
+        Path,
         typer.Option(
             "--templates",
             file_okay=False,
             help="Write the blank intake templates (agents.csv, tools.csv, people.csv) here.",
         ),
-    ] = None,
+    ],
 ) -> None:
     """Diagnose authority gaps from intake files. Reads files only."""
-    if templates is None:
-        typer.echo(
-            "error: only --templates is available so far; the diagnostic is not built yet",
-            err=True,
-        )
-        raise typer.Exit(1)
     try:
         written = write_templates(templates)
     except IntakeError as exc:

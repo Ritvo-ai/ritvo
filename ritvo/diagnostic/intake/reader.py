@@ -119,10 +119,10 @@ class _Row:
 
     def choice[E: StrEnum](self, column: str, kind: type[E]) -> E | None:
         value = self.text(column)
-        if value is None or value == UNKNOWN:
+        if value is None or value.lower() == UNKNOWN:
             return None
         try:
-            return kind(value)
+            return kind(value.lower())
         except ValueError:
             options = ", ".join([*(member.value for member in kind), UNKNOWN])
             self.problem(column, f"must be one of {options}, or empty")
@@ -233,9 +233,9 @@ def load_intake(directory: Path) -> Intake:
                 agent_id=row.text("agent_id") or "",
                 name=row.text("name"),
                 platform=row.text("platform"),
-                built_by_team=row.text("built_by_team"),
+                built_by_team=row.id("built_by_team"),
                 owner=row.id("owner"),
-                owner_team=row.text("owner_team"),
+                owner_team=row.id("owner_team"),
                 mode=row.choice("mode", Mode),
                 credential=row.text("credential"),
                 tools=row.ids("tools"),
@@ -253,7 +253,7 @@ def load_intake(directory: Path) -> Intake:
                 access=row.choice("access", Access),
                 description=row.text("description"),
                 tier=row.choice("tier", Tier),
-                owner_team=row.text("owner_team"),
+                owner_team=row.id("owner_team"),
                 approval_ttl_minutes=row.minutes("approval_ttl_minutes"),
             ),
         )
@@ -265,7 +265,7 @@ def load_intake(directory: Path) -> Intake:
             row.key("person_id"),
             Person(
                 person_id=row.text("person_id") or "",
-                team=row.text("team"),
+                team=row.id("team"),
                 roles=row.ids("roles"),
                 deputy=row.id("deputy"),
             ),

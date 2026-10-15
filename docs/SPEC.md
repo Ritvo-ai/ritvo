@@ -519,8 +519,9 @@ File format, for all three files:
 - The first row is the header. Column names are exact and lower case; their order is free. An unknown or repeated column, or a missing required column, is an error that names the valid columns.
 - A list cell holds values separated by `;`. Spaces around values are ignored.
 - An empty cell means not known, and `unknown` means the same where a column takes fixed values. Not known is never read as a safe default: an empty `tier` is not `low`, and an empty `owner` is not an owner.
-- Rows whose cells are all empty are ignored.
-- An ID is 1 to 64 characters from `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or digit. IDs are unique within their file. Role names follow the same rule.
+- Fixed values, including `unknown`, are matched ignoring case: `High` reads as `high`. Column names and IDs are matched exactly.
+- Rows whose cells are all empty are ignored. A row with fewer cells than the header has the missing cells empty; a row with more cells than the header is an error.
+- An ID is 1 to 64 characters from `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or digit. IDs are unique within their file. Team IDs and role names follow the same rule.
 
 `agents.csv`:
 
@@ -529,9 +530,9 @@ File format, for all three files:
 | `agent_id` | yes | The agent's ID; becomes `agents[].id` |
 | `name` | no | Display name |
 | `platform` | no | Where the agent runs, as free text, for example `copilot-studio` or `custom` |
-| `built_by_team` | no | The team that built it |
+| `built_by_team` | no | The ID of the team that built it |
 | `owner` | no | The `person_id` of the person accountable for it |
-| `owner_team` | no | The team accountable for it |
+| `owner_team` | no | The ID of the team accountable for it |
 | `mode` | no | `attended`, `unattended` or `both` |
 | `credential` | no | The name of the credential, key or service account the agent uses to call tools. A name only, never a value |
 | `tools` | no | List of the `tool_id`s the agent can use today |
@@ -545,7 +546,7 @@ File format, for all three files:
 | `access` | no | `read` or `write`. Anything that changes or deletes data, sends a message or moves money is `write` |
 | `description` | no | One line on what the tool does |
 | `tier` | no | `low`, `medium` or `high` |
-| `owner_team` | no | The team that owns the system; becomes the `owner_team` of bindings to this tool |
+| `owner_team` | no | The ID of the team that owns the system; becomes the `owner_team` of bindings to this tool |
 | `approval_ttl_minutes` | no | A whole number of minutes, at least 1; becomes `tools[].approval_ttl_minutes` |
 
 `people.csv`:
@@ -553,7 +554,7 @@ File format, for all three files:
 | Column | Required | Meaning |
 | --- | --- | --- |
 | `person_id` | yes | The ID used in `owner` and `deputy`. Use an ID, not an email address or full name |
-| `team` | no | The person's team |
+| `team` | no | The ID of the person's team |
 | `roles` | no | List of role names, for example `policy_author; escalation_reviewer; finance` |
 | `deputy` | no | The `person_id` who acts when this person is absent; never the person themselves |
 
