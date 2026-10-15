@@ -350,5 +350,6 @@ def test_cli_templates_refuses_existing(tmp_path: Path) -> None:
 def test_cli_diagnose_needs_templates() -> None:
     result = runner.invoke(app, ["diagnose"])
     assert result.exit_code == 2
-    assert "Missing option" in result.output
-    assert "--templates" in result.output
+    # CI forces colour, which puts escape codes inside the option name.
+    output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "Missing option '--templates'" in output
