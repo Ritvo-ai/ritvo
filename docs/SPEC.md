@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.2-draft · 19 October 2026 · Licence: Apache-2.0
+Version 0.3-draft · 19 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -770,6 +770,20 @@ Platform rules for contributors:
 - SQLite files may be locked on Windows. Close connections explicitly in tests.
 - Passkeys run in the browser and do not depend on the server operating system.
 
+## 14. Phases
+
+The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, then 4 and 5. This section maps them to the sections of this spec and records status as of 19 October 2026. "Specified" means this spec defines it. "Built" means the code is on the main branch.
+
+| Phase | Spec sections in force | Built | Specified, not built |
+| --- | --- | --- | --- |
+| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3 inspector; 8, 8.1, 8.2, 8.3 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` (8.1, before the 0.2 changes); intake templates and reader (8.2) | Inventory format; registry exports; config discovery; the scoring contract in 8.1 (`needs_validation`, coverage, `basis`); drafted answers (8.3); the report in 7.2 |
+| 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | Nothing | All of it |
+| 2 Decide | 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
+| 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
+| 4 and 5 | Not yet specified beyond the platform note in 13 | Nothing | None |
+
+Items in this spec marked (verify) are not agreed and are not built from until they are confirmed. Section 12 lists them.
+
 ## Appendix A. Revision history
 
 Append-only. A change adds a row; earlier rows are not edited.
@@ -779,3 +793,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.1-draft | 13 October 2026 | First draft | |
 | 0.1-draft | 19 October 2026 | Inventory format (4.8), findings and sources table (7), registry exports (7.3), CLI table (6.3) | Pull request 11 |
 | 0.2-draft | 19 October 2026 | `unknown` and `gap` separated: new level `needs_validation`, evidence coverage per area, answer provenance (`basis`, `evidence`), `review_version` 1 (8.1). Drafted answers, inspector first (8.3). Assisted drafting and evidence-outranks-assertion rules (9). Open items added (12). | Decisions of 19 October 2026: inspector first; split `unknown`; AI assistants allowed under governance. The owner overlay and the help text for exports are proposals, in section 12 only. |
+| 0.3-draft | 19 October 2026 | Phases mapped to spec sections with build status (14). | Phase definitions in PRD section 7, 19 October 2026. |

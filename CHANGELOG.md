@@ -24,5 +24,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Version set to 0.0.1.dev0, a pre-alpha placeholder release that reserves the package name on PyPI.
 - Spec 0.2-draft: separate `unknown` from `gap` with a `needs_validation` level, add answer provenance and evidence coverage, define drafted answers and assisted drafting.
+- PRD 0.2-draft: define phases 0 to 3 with purpose, deliverables, exit and status; add requirements for the scoring split, drafted answers, additive re-run, interview assistant, owner overlay and observe-derived proposals; correct the gap review to 17 questions. Spec 0.3-draft: add section 14 mapping phases to spec sections with build status.
 
 [Unreleased]: https://github.com/Ritvo-ai/ritvo/commits/main
