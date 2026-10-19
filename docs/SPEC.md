@@ -1,8 +1,8 @@
 # Ritvo — Technical Specification
 
-Version 0.1-draft · 13 October 2026 · Licence: Apache-2.0
+Version 0.2-draft · 19 October 2026 · Licence: Apache-2.0
 
-The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess.
+The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
 ## 1. Scope
 
@@ -521,7 +521,7 @@ Rules:
 
 ## 8. Diagnostic
 
-Files in, report out. Areas of the gap review: which agents exist and what they can do; who may approve what; what happens when nobody answers; how the rules change; what record exists. Scoring is rule-based with three levels per area. Gap rules over a draft `ritvo.yaml`: no named approver; owner can approve own agent; no escalation path; no approval expiry; policy change with no second person; high tier set to allow; shared keys; unattended agent with no owner.
+Files in, report out. Areas of the gap review: which agents exist and what they can do; who may approve what; what happens when nobody answers; how the rules change; what record exists. Scoring is rule-based with four levels per area (section 8.1). Gap rules over a draft `ritvo.yaml`: no named approver; owner can approve own agent; no escalation path; no approval expiry; policy change with no second person; high tier set to allow; shared keys; unattended agent with no owner.
 
 ### 8.1 Gap review
 
@@ -531,13 +531,16 @@ Levels, used for each question and each area:
 
 | Level | Meaning |
 | --- | --- |
-| `gap` | The control is missing, or nobody knows whether it exists |
+| `gap` | The control is known to be missing |
+| `needs_validation` | Nobody could say whether the control exists, or the answer rests on assertion with no evidence. It is not a failure and gets no credit toward `in_place` |
 | `partial` | The control exists for some agents or some of the time, or informally |
 | `in_place` | The control exists, is written down and applies to every agent |
 
-An unanswered question is `not_answered`. It is never scored as `in_place`.
+An unanswered question is `not_answered`. It is never scored as `in_place`. Order from worst to best: `gap`, `needs_validation`, `partial`, `in_place`.
 
-Questions. Every question also accepts `unknown`, which scores `gap`.
+A known gap and an unknown are different facts. Scoring them alike would read an uninformed first pass as an accusation, so they are kept apart and the report shows how much of the result rests on evidence (see Scoring and Provenance below).
+
+Questions. Every question also accepts `unknown`, which scores `needs_validation`. (Before version 0.2 of this spec, `unknown` scored `gap`.)
 
 | ID | Question | `gap` | `partial` | `in_place` |
 | --- | --- | --- | --- | --- |
@@ -569,31 +572,40 @@ Answer values use these option IDs. For `record.tamper`, `logged` means changes 
 Answers file:
 
 ```yaml
-review_version: 0
+review_version: 1
 organisation: Example Logistics Ltd   # optional; shown on the result
 answers:
   agents.inventory: partial
   agents.owner: some
   approval.self: not_prevented
   # questions left out are not_answered
+basis:                                # optional, per question; see Provenance
+  agents.inventory:
+    source: derived                   # derived | observed | asserted
+    evidence: inventory.json sha256:<hash>   # a reference, never a value
 notes:                                # optional, one line per question
   agents.owner: Finance agents have owners; support agents do not.
 ```
 
-Validation: `review_version` MUST be `0`. An unknown question ID or option ID is an error that names the valid IDs, and nothing is written. An omitted question is `not_answered`.
+Validation: `review_version` MUST be `1`. A file with `review_version: 0` is also read, with every `unknown` read as `needs_validation`, and the result carries a notice saying so (verify: confirm this migration before it is built). An unknown question ID or option ID is an error that names the valid IDs, and nothing is written. An omitted question is `not_answered`.
 
 Scoring, per area:
 
 1. If no question in the area is answered, the area is `not_answered`.
-2. Otherwise the area takes the lowest level among its answered questions: one gap makes the area a gap.
+2. Otherwise the area takes the lowest level among its answered questions, in the order above: one gap makes the area a gap, and one `needs_validation` keeps it from being better than `needs_validation`.
 3. If some questions in the area are unanswered, the area cannot be `in_place`: it is capped at `partial` and marked incomplete with the number answered.
+4. An answer whose basis is `asserted`, or that has no `basis`, cannot be scored `in_place`: it is capped at `partial` (verify: this means questions only a person can answer, such as `approval.named`, need an evidence reference to reach `in_place`; confirm before it is built).
 
-There is no total score across areas.
+There is no total score across areas. Each area also shows its evidence coverage: how many of its questions have a `basis` of `derived` or `observed`, out of the questions in the area. Coverage is a count, not a score.
+
+Provenance. `basis` records where an answer came from. `derived` means read from a file or registry export, `observed` means taken from logs or records, `asserted` means a person said so. `evidence` is a reference, such as the SHA-256 of `inventory.json` and a `manifest.registry_exports` entry, and MUST NOT contain a value from a file, a credential value, or any secret. The name `basis` is used so it is not confused with `agents[].source`, which says how an agent was discovered.
+
+A `null` in an inventory is not known. An answer drafted from a `null` is `needs_validation`, never `gap` and never a pass.
 
 Output:
 
 - `review.html` beside the answers file, or at `--out`. It is one self-contained file under the same rules as the inspect report (section 7.2): inline styles, the system font stack, no network requests, light and dark themes, every level shown with a label and a shape as well as colour, and a print stylesheet that fits one page.
-- It shows the organisation, the date, the SHA-256 of the answers file, the five areas with their levels, and for each question scored `gap`, `partial` or `not_answered`: the answer given, why it matters, and a next step. It states that the answers are self-reported and that the result is not a conformity assessment.
+- It shows the organisation, the date, the SHA-256 of the answers file, the five areas with their levels and evidence coverage, and for each question scored `gap`, `needs_validation`, `partial` or `not_answered`: the answer given, its basis, why it matters, and a next step. It states that the answers are self-reported and that the result is not a conformity assessment.
 - It MUST NOT contain the answers file's path. Notes are shown as plain text, escaped.
 - The terminal prints one line per area with its level and the path of the written file.
 - Exit status: 0 when the result is written, whatever the levels; non-zero when the answers file is invalid.
@@ -655,6 +667,23 @@ Validation:
 - An error gives the file name, line and column, and nothing is written. An error MUST NOT echo a cell's content, except an ID or a fixed value, shortened to 40 characters.
 - The `credential` column is compared across agents to find shared keys (section 8). Its value is never written to a report or to the draft `ritvo.yaml`.
 
+### 8.3 Drafted answers
+
+The inspector comes first. Where an inventory exists, the answers file is drafted from it, and a person confirms the draft instead of composing it.
+
+- The draft is written as a separate file. It is never written over an answers file, and it is never scored until a person has confirmed it.
+- Each of the 17 questions is routed one of three ways. **Derive**: read from files or an export. **Observe**: taken from logs or records. **Ask**: only a person can say. A question routed to a person stays `not_answered` in the draft.
+- Every drafted answer carries a `basis` and an `evidence` reference. A `null` in the inventory becomes `needs_validation`.
+- Routing, as a first reading from the question text (verify each against the inventory fields that exist when this is built):
+
+| Route | Questions |
+| --- | --- |
+| Derive | `agents.inventory`, `agents.owner`, `agents.reach`, `escalation.expiry`, `policy_change.second_person`, `policy_change.owners`, `policy_change.versioning` |
+| Observe | `agents.new_tools`, `approval.self`, `escalation.waiting`, `record.decisions`, `record.identity` |
+| Ask | `approval.named`, `approval.context`, `escalation.path`, `escalation.stop`, `record.tamper` |
+
+- The command that produces the draft, and the sources for the Observe questions, are open items (section 12). Until the inspector lands, a person writes the answers file by hand, as in section 8.1.
+
 ## 9. Security requirements
 
 - Tokens: validate issuer, audience and expiry; never store or forward a raw token; one hop, one token.
@@ -664,6 +693,8 @@ Validation:
 - The UI uses the same governed APIs as the CLI.
 - Secrets are never written to logs, the ledger, config, errors or fixtures. Access is logged by name.
 - Prompt injection is a known limit. The defence is structural: parameter limits and a mandatory ask on high tier.
+- Assisted drafting: an AI assistant MAY draft inventories and answers, interview the operator, and draft policy proposals. A draft never approves, signs, activates or publishes anything. An assistant runs as a governed agent with a registered owner and narrow scopes, writes only to a proposals area, has no approve operation, and cannot write `ritvo.yaml`, a bundle or the ledger. Its output is marked `asserted` unless it is backed by evidence. Until Ritvo's own enforcement exists, these limits are enforced in code.
+- Evidence outranks assertion: a result that rests only on a person's or an assistant's statement is shown as such, and it is not scored `in_place`.
 - The repository is public: no client data, keys or answers in files, fixtures or history.
 
 ## 10. Conformance: the scenario suite
@@ -707,6 +738,12 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - Per identity provider: which claims an exchanged token carries for subject, actor and scopes.
 - Whether any candidate gateway or cloud policy engine accepts an external decision hook or a signed grant.
 - Launch stages of the cloud platform identity features used in the documentation.
+- Owner overlay (proposed): `ritvo inspect --owners agents.csv` merges `owner` and `owner_team` from the intake file into an inventory by `agent_id` or `platform_ref`, and records each merged row in the manifest. AgentCore exports carry no owners and Vertex owners exist only where labels were applied, while an agent with no owner blocks approval of an import (section 7), so a first run needs a way to assign owners without editing `inventory.json`. First check how an owner is assigned today.
+- Help and errors for registry exports (proposed): `ritvo inspect --help` and the report show the commands that produce each export file, and a refusal that has a remedy says what to do without echoing a field value, for example to re-export so a partial page is whole.
+- The command that drafts an answers file from an inventory, and the sources for the Observe questions in section 8.3.
+- Whether answers with a basis of `asserted` are capped at `partial` (section 8.1, scoring rule 4), and how an evidence reference to a document is recorded.
+- The migration of `review_version: 0` files, where `unknown` scored `gap`.
+- Which design partner's platforms set the order of inspector sources after the registry readers.
 
 ## 13. Platform support and CI
 
@@ -732,3 +769,13 @@ Platform rules for contributors:
 - Add `.gitattributes` with `* text=auto eol=lf` so hashed files and fixtures do not change line endings.
 - SQLite files may be locked on Windows. Close connections explicitly in tests.
 - Passkeys run in the browser and do not depend on the server operating system.
+
+## Appendix A. Revision history
+
+Append-only. A change adds a row; earlier rows are not edited.
+
+| Version | Date | Change | Source |
+| --- | --- | --- | --- |
+| 0.1-draft | 13 October 2026 | First draft | |
+| 0.1-draft | 19 October 2026 | Inventory format (4.8), findings and sources table (7), registry exports (7.3), CLI table (6.3) | Pull request 11 |
+| 0.2-draft | 19 October 2026 | `unknown` and `gap` separated: new level `needs_validation`, evidence coverage per area, answer provenance (`basis`, `evidence`), `review_version` 1 (8.1). Drafted answers, inspector first (8.3). Assisted drafting and evidence-outranks-assertion rules (9). Open items added (12). | Decisions of 19 October 2026: inspector first; split `unknown`; AI assistants allowed under governance. The owner overlay and the help text for exports are proposals, in section 12 only. |
