@@ -6,11 +6,14 @@ from typing import Annotated
 import typer
 
 from ritvo import __version__
+from ritvo.connectors.registry.common import RegistryError
 from ritvo.diagnostic.intake.reader import IntakeError
 from ritvo.diagnostic.intake.templates import write_templates
 from ritvo.diagnostic.review.questions import LEVEL_LABELS
 from ritvo.diagnostic.review.report import write_report
 from ritvo.diagnostic.review.scoring import ReviewError, load_answers, score
+from ritvo.inspector.inventory import write_inventory
+from ritvo.inspector.registry import EXPORTS, inspect_registry, parse_source
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -82,3 +85,53 @@ def diagnose(
         raise typer.Exit(1) from None
     for path in written:
         typer.echo(f"Wrote {path}")
+
+
+_NO_OWNER = "agent.no_owner"
+_SHARED = "identity.shared_key_name"
+_FINDING_TEXT = {
+    _NO_OWNER: "agents that need an owner",
+    _SHARED: "credentials used by more than one agent",
+}
+
+_EXPORTS_HELP = "\n\n".join(
+    f"{platform}: {note}.\n\n" + "\n\n".join(f"    {command}" for command in commands)
+    for platform, (note, commands) in EXPORTS.items()
+)
+
+
+@app.command(
+    epilog=f"Export each file with the platform's own tool first:\n\n{_EXPORTS_HELP}",
+)
+def inspect(
+    registry: Annotated[
+        list[str],
+        typer.Option(
+            "--registry",
+            metavar="<platform>:<file>",
+            help="A platform's agent export to read: agentcore or vertex. Repeatable.",
+        ),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option("--out", dir_okay=False, help="Where to write the inventory."),
+    ] = Path("inventory.json"),
+) -> None:
+    """Write inventory.json from files only. Read-only and local; never calls a platform."""
+    try:
+        sources = [parse_source(value) for value in registry]
+        run = inspect_registry(sources, out)
+    except RegistryError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        typer.echo("Nothing was written.", err=True)
+        raise typer.Exit(1) from None
+    for warning in run.warnings:
+        typer.echo(f"warning: {warning}", err=True)
+    write_inventory(run.inventory, out)
+    width = max(len(result.platform) for result in run.files)
+    for result in run.files:
+        typer.echo(f"{result.platform:<{width}}  {result.agents} agents  {result.path}")
+    for rule in (_NO_OWNER, _SHARED):
+        count = sum(1 for finding in run.inventory.findings if finding.rule == rule)
+        typer.echo(f"{rule}: {count} ({_FINDING_TEXT[rule]})")
+    typer.echo(f"Wrote {out}")

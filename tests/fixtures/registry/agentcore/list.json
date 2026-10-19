@@ -1,0 +1,22 @@
+{
+  "agentRuntimes": [
+    {
+      "agentRuntimeArn": "arn:aws:bedrock-agentcore:eu-west-2:123456789012:runtime/support_triage-a1B2c3D4e5",
+      "agentRuntimeId": "support_triage-a1B2c3D4e5",
+      "agentRuntimeName": "support_triage",
+      "agentRuntimeVersion": "3",
+      "description": "Sorts incoming support tickets for Example Logistics Ltd",
+      "lastUpdatedAt": "2026-10-02T08:14:00+00:00",
+      "status": "READY"
+    },
+    {
+      "agentRuntimeArn": "arn:aws:bedrock-agentcore:eu-west-2:123456789012:runtime/invoice_matcher-F6g7H8i9J0",
+      "agentRuntimeId": "invoice_matcher-F6g7H8i9J0",
+      "agentRuntimeName": "invoice_matcher",
+      "agentRuntimeVersion": "7",
+      "description": "Matches supplier invoices to purchase orders",
+      "lastUpdatedAt": "2026-09-28T16:40:00+00:00",
+      "status": "READY"
+    }
+  ]
+}

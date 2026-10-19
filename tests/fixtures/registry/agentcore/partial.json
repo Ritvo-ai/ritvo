@@ -1,0 +1,13 @@
+{
+  "agentRuntimes": [
+    {
+      "agentRuntimeArn": "arn:aws:bedrock-agentcore:eu-west-2:123456789012:runtime/support_triage-a1B2c3D4e5",
+      "agentRuntimeId": "support_triage-a1B2c3D4e5",
+      "agentRuntimeName": "support_triage",
+      "agentRuntimeVersion": "3",
+      "lastUpdatedAt": "2026-10-02T08:14:00+00:00",
+      "status": "READY"
+    }
+  ],
+  "nextToken": "fixture-page-token"
+}

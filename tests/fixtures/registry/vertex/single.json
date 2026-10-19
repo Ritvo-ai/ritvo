@@ -1,0 +1,14 @@
+{
+  "name": "projects/example-logistics/locations/europe-west2/reasoningEngines/4711000000000000003",
+  "displayName": "Market research",
+  "createTime": "2026-07-21T11:45:00.000000Z",
+  "updateTime": "2026-07-21T11:45:00.000000Z",
+  "spec": {
+    "agentFramework": "custom",
+    "effectiveIdentity": "research-agent@example-logistics.iam.gserviceaccount.com"
+  },
+  "labels": {
+    "ritvo-owner": "priya",
+    "ritvo-owner-team": "platform"
+  }
+}
