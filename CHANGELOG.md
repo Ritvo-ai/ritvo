@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Specification of the intake templates (`docs/SPEC.md` section 8.2): `agents.csv`, `tools.csv` and `people.csv`, their columns and validation.
 - `ritvo diagnose --templates <dir>`: writes the blank intake templates and never overwrites a file. A reader validates filled-in templates for the diagnostic. Examples in `examples/intake/`.
 - Specification of the inventory format (`docs/SPEC.md` section 4.8) and of registry exports from AWS Bedrock AgentCore and Google Vertex AI Agent Engine (section 7.3).
+- `ritvo inspect --registry <platform>:<file>`: reads AWS Bedrock AgentCore and Google Vertex AI Agent Engine agent exports from files and writes `inventory.json`, with the findings `agent.no_owner` and `identity.shared_key_name`. Inventory models that reject another schema version, a missing field or an unknown field. Fictional example exports in `examples/inspect/`.
 - Runtime dependencies Jinja2, Pydantic and PyYAML.
 - Continuous integration on Linux, macOS and Windows: lint, type check, tests, licence check, secret scan, wheel build and install test, CodeQL, and commit hygiene.
 - Release workflow: on a `v*` tag, test, build, check that the tag matches the package version, attest build provenance, and publish to PyPI by trusted publishing after approval.

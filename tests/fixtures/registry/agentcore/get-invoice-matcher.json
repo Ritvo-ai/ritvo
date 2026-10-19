@@ -1,0 +1,9 @@
+{
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:eu-west-2:123456789012:runtime/invoice_matcher-F6g7H8i9J0",
+  "agentRuntimeId": "invoice_matcher-F6g7H8i9J0",
+  "agentRuntimeName": "invoice_matcher",
+  "agentRuntimeVersion": "7",
+  "environmentVariables": {},
+  "roleArn": "arn:aws:iam::123456789012:role/example-agent-runtime",
+  "status": "READY"
+}

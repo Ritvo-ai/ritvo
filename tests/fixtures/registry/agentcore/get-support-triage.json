@@ -1,0 +1,23 @@
+{
+  "agentRuntimeArn": "arn:aws:bedrock-agentcore:eu-west-2:123456789012:runtime/support_triage-a1B2c3D4e5",
+  "agentRuntimeId": "support_triage-a1B2c3D4e5",
+  "agentRuntimeName": "support_triage",
+  "agentRuntimeVersion": "3",
+  "createdAt": "2026-06-01T08:00:00+00:00",
+  "description": "Sorts incoming support tickets for Example Logistics Ltd",
+  "environmentVariables": {
+    "FIXTURE_ENV_NAME": "fixture-env-value-never-copied"
+  },
+  "lastUpdatedAt": "2026-10-02T08:14:00+00:00",
+  "networkConfiguration": {
+    "networkMode": "PUBLIC"
+  },
+  "protocolConfiguration": {
+    "serverProtocol": "HTTP"
+  },
+  "roleArn": "arn:aws:iam::123456789012:role/example-agent-runtime",
+  "status": "READY",
+  "workloadIdentityDetails": {
+    "workloadIdentityArn": "arn:aws:bedrock-agentcore:eu-west-2:123456789012:workload-identity-directory/default/workload-identity/support_triage-a1B2c3D4e5"
+  }
+}
