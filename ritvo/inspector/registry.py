@@ -75,12 +75,16 @@ def _merge(first: RegistryAgent, other: RegistryAgent) -> RegistryAgent:
     )
 
 
-def _findings(agents: list[Agent]) -> list[Finding]:
-    findings = [
+def no_owner_findings(agents: list[Agent]) -> list[Finding]:
+    return [
         Finding(rule="agent.no_owner", subject=agent.id, agents=[agent.id])
         for agent in agents
         if agent.owner is None
     ]
+
+
+def _findings(agents: list[Agent]) -> list[Finding]:
+    findings = no_owner_findings(agents)
     by_credential: dict[str, list[str]] = {}
     for agent in agents:
         if agent.credential is not None:
@@ -158,6 +162,7 @@ def inspect_registry(
             servers_contacted=[],
             env_names_seen=[],
             registry_exports=exports,
+            owner_overlays=[],
         ),
         agents=agents,
         mcp_servers=[],

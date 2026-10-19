@@ -354,9 +354,10 @@ def test_bad_registry_option(tmp_path: Path, value: str, message: str) -> None:
     assert message in result.output
 
 
-def test_registry_is_required() -> None:
+def test_a_source_is_required() -> None:
     result = runner.invoke(app, ["inspect"])
-    assert result.exit_code == 2
+    assert result.exit_code == 1
+    assert "give at least one --registry" in result.output
 
 
 def test_windows_drive_letter_survives() -> None:
@@ -489,17 +490,26 @@ def test_inventory_round_trip(tmp_path: Path) -> None:
     assert inventory.model_dump(mode="json") == data
 
 
-@pytest.mark.parametrize("version", [1, "0", True, 0.0, None])
+@pytest.mark.parametrize("version", [2, "1", True, 1.0, None])
 def test_inventory_rejects_other_schema_version(tmp_path: Path, version: object) -> None:
     data = _inventory_data(tmp_path)
     data["schema_version"] = version
-    assert "schema_version must be 0" in _load(tmp_path, data)
+    assert "schema_version must be 1" in _load(tmp_path, data)
+
+
+def test_inventory_rejects_version_0_with_a_rerun_message(tmp_path: Path) -> None:
+    data = _inventory_data(tmp_path)
+    data["schema_version"] = 0
+    del data["manifest"]["owner_overlays"]
+    message = _load(tmp_path, data)
+    assert "has schema_version 0" in message
+    assert "run the inspector again" in message
 
 
 def test_inventory_model_rejects_other_schema_version(tmp_path: Path) -> None:
     data = _inventory_data(tmp_path)
-    data["schema_version"] = 1
-    with pytest.raises(ValidationError, match="schema_version must be 0"):
+    data["schema_version"] = 0
+    with pytest.raises(ValidationError, match="schema_version must be 1"):
         Inventory.model_validate(data)
 
 
