@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.3-draft · 19 October 2026 · Licence: Apache-2.0
+Version 0.4-draft · 19 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -183,7 +183,7 @@ Fields: `event_id`, `timestamp`, `principal` (subject, actor, chain, mode), `bou
 `inventory.json` is what the inspector writes and what `ritvo import`, `ritvo diagnose` and the inspect report read. It is one UTF-8 JSON object. An inventory made for a real organisation is client data and MUST NOT be committed to a public repository.
 
 ```yaml
-schema_version: 0
+schema_version: 1
 generated_at: 2026-10-13T09:30:00Z
 tool: ritvo-inspect 0.1.0
 manifest:                       # exactly what was read
@@ -196,6 +196,7 @@ manifest:                       # exactly what was read
     - platform: agentcore
       sha256: 9f2c...
       agents: 3
+  owner_overlays: []            # one entry per field set by --owners (section 7.4)
 agents:
   - id: acme.research
     source: code                # code | config | registry | middleware
@@ -238,7 +239,7 @@ Fields. Every field listed is present; `null` means not known, never a safe defa
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schema_version` | integer | `0` |
+| `schema_version` | integer | `1` |
 | `generated_at` | string | RFC 3339 time in UTC, ending `Z` |
 | `tool` | string | `ritvo-inspect` and the package version |
 | `manifest.paths` | strings | Every path the operator named or the inspector checked, found or not |
@@ -247,6 +248,7 @@ Fields. Every field listed is present; `null` means not known, never a safe defa
 | `manifest.servers_contacted` | strings | IDs of MCP servers contacted; empty unless `--connect` was used |
 | `manifest.env_names_seen` | strings | Environment variable names seen, never values |
 | `manifest.registry_exports` | objects | One per registry export read: `platform`, the file's `sha256`, and the number of `agents` taken from it |
+| `manifest.owner_overlays` | objects | One per field the owner overlay changed (section 7.4): `agent` (ID), `field` (`owner` or `owner_team`), `previous` (the value it replaced, or null) and `source_row` (the line number in `agents.csv`). Never the file's other contents |
 | `agents[].id` | ID | Unique in the inventory |
 | `agents[].source` | string | `code`, `config`, `registry` or `middleware` |
 | `agents[].name` | string or null | Display name |
@@ -272,7 +274,7 @@ Fields. Every field listed is present; `null` means not known, never a safe defa
 | `findings[].subject` | string | What the finding is about: an agent, server or tool ID, or a credential or environment variable name |
 | `findings[].agents` | IDs | The agents involved, possibly none |
 
-A reader MUST reject a file with another `schema_version`, a missing field or an unknown field, and name the field. An inventory MUST NOT contain secret values, raw config text, tokens, prompts, tool descriptions or environment variable values.
+A reader MUST reject a file with another `schema_version`, a missing field or an unknown field, and name the field. A file with `schema_version` 0 was written before `manifest.owner_overlays` existed. It is rejected with a message to run the inspector again. An inventory MUST NOT contain secret values, raw config text, tokens, prompts, tool descriptions or environment variable values.
 
 ## 5. Behaviour
 
@@ -400,6 +402,7 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | `ritvo diagnose --templates <dir>` | Write the blank intake templates |
 | `ritvo inspect` | Local scan; writes `inventory.json` |
 | `ritvo inspect --registry <platform>:<file>` | Read a platform's agent export into `inventory.json` |
+| `ritvo inspect --owners <agents.csv>` | Merge owners from an intake file into an inventory, with `--registry` or with `--inventory <file>` (section 7.4) |
 | `ritvo import <inventory.json>` | Create a draft change request from an inventory |
 | `ritvo import-doa <matrix.csv>` | Draft bindings and roles from a delegation-of-authority matrix |
 | `ritvo init [--questionnaire]` | Build `ritvo.yaml` |
@@ -518,6 +521,41 @@ Rules:
 - Findings from this source: `agent.no_owner` for each agent whose owner is null, and `identity.shared_key_name` for each credential that two or more agents share, with `subject` the credential and `agents` the agents that share it.
 - The manifest lists each file in `paths`, counts it in `files_read`, and adds one `registry_exports` entry per file.
 - The terminal prints the number of agents read from each file, the number of findings by rule, and the path written. Exit status: 0 when the inventory is written, non-zero otherwise.
+
+### 7.4 Owner overlay
+
+`ritvo inspect --owners <agents.csv>` sets `owner` and `owner_team` on the agents of an inventory from an `agents.csv` file (section 8.2). Registry exports often carry no owner (section 7.3), and an agent with no owner blocks approval of an import (section 7). The overlay assigns owners without anyone editing `inventory.json` by hand.
+
+Use:
+
+- With `--registry`, the overlay applies to the inventory built in the same run.
+- On its own, `--inventory <file>` names an existing inventory to read. That file is never changed. The result goes to `--out`.
+- `--out` MUST NOT be the file named by `--inventory`. That is refused, and nothing is written.
+- `--owners` needs `--registry` or `--inventory`. Without either, it is an error.
+
+Reading the file:
+
+- The file is read by the intake reader of section 8.2, in the format of section 8.2. No other format is accepted, and the file is named `agents.csv`.
+- If `people.csv` is in the same directory, it is read too, and every `owner` MUST name a person in it.
+- `owner` and `owner_team` are IDs under the rule of section 8.2. An invalid file is an error as in section 8.2, and nothing is written.
+- Only `agent_id`, `owner` and `owner_team` are used. The other columns are validated as in section 8.2, and not merged.
+
+Matching:
+
+- A row matches the inventory agent whose `id` equals the row's `agent_id`. There is no other way to match.
+- A row that matches no agent is a warning that names its line number and its `agent_id`. It is never dropped silently, and it does not stop the run.
+
+Merging:
+
+- A non-empty `owner` or `owner_team` sets that field on the matched agent.
+- If the agent already has a different non-null value, the overlay wins.
+- An empty cell never changes a field. A field that nothing sets stays null, meaning not known. It is never defaulted.
+- Each field the overlay changes adds one entry to `manifest.owner_overlays` (section 4.8): `agent`, `field`, `previous` and `source_row`. A value equal to the one already there changes nothing and is not recorded.
+- Each intake file read is listed in `manifest.paths` and counted in `manifest.files_read`.
+- With `--inventory`, the result keeps the input's agents, MCP servers, tools, identity and manifest, adds the overlay's entries, and gets a new `generated_at` and `tool`.
+- `agent.no_owner` findings are worked out again from the merged agents. Other findings are kept as they were.
+
+The terminal prints the number of fields set, how many of them replaced a non-null value, each warning, and the path written. Exit status: 0 when the inventory is written, non-zero otherwise.
 
 ## 8. Diagnostic
 
@@ -738,7 +776,7 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - Per identity provider: which claims an exchanged token carries for subject, actor and scopes.
 - Whether any candidate gateway or cloud policy engine accepts an external decision hook or a signed grant.
 - Launch stages of the cloud platform identity features used in the documentation.
-- Owner overlay (proposed): `ritvo inspect --owners agents.csv` merges `owner` and `owner_team` from the intake file into an inventory by `agent_id` or `platform_ref`, and records each merged row in the manifest. AgentCore exports carry no owners and Vertex owners exist only where labels were applied, while an agent with no owner blocks approval of an import (section 7), so a first run needs a way to assign owners without editing `inventory.json`. First check how an owner is assigned today.
+- Owner overlay: defined in section 7.4 (decision D8). No longer open.
 - Help and errors for registry exports (proposed): `ritvo inspect --help` and the report show the commands that produce each export file, and a refusal that has a remedy says what to do without echoing a field value, for example to re-export so a partial page is whole.
 - The command that drafts an answers file from an inventory, and the sources for the Observe questions in section 8.3.
 - Whether answers with a basis of `asserted` are capped at `partial` (section 8.1, scoring rule 4), and how an evidence reference to a document is recorded.
@@ -794,3 +832,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.1-draft | 19 October 2026 | Inventory format (4.8), findings and sources table (7), registry exports (7.3), CLI table (6.3) | Pull request 11 |
 | 0.2-draft | 19 October 2026 | `unknown` and `gap` separated: new level `needs_validation`, evidence coverage per area, answer provenance (`basis`, `evidence`), `review_version` 1 (8.1). Drafted answers, inspector first (8.3). Assisted drafting and evidence-outranks-assertion rules (9). Open items added (12). | Decisions of 19 October 2026: inspector first; split `unknown`; AI assistants allowed under governance. The owner overlay and the help text for exports are proposals, in section 12 only. |
 | 0.3-draft | 19 October 2026 | Phases mapped to spec sections with build status (14). | Phase definitions in PRD section 7, 19 October 2026. |
+| 0.4-draft | 19 October 2026 | Owner overlay defined (7.4). `ritvo inspect --owners` added to the CLI table (6.3). `manifest.owner_overlays` added and inventory `schema_version` raised to 1, with version 0 files rejected (4.8). Owner overlay closed in the open items (12). | Decision D8 |
