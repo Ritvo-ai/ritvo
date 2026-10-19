@@ -11,7 +11,12 @@ from ritvo.diagnostic.intake.reader import IntakeError
 from ritvo.diagnostic.intake.templates import write_templates
 from ritvo.diagnostic.review.questions import LEVEL_LABELS
 from ritvo.diagnostic.review.report import write_report
-from ritvo.diagnostic.review.scoring import ReviewError, load_answers, score
+from ritvo.diagnostic.review.scoring import (
+    OLD_REVIEW_VERSION,
+    ReviewError,
+    load_answers,
+    score,
+)
 from ritvo.inspector.inventory import InventoryError, load_inventory, write_inventory
 from ritvo.inspector.owners import OverlayError, apply_overlay, read_overlay
 from ritvo.inspector.registry import EXPORTS, FileResult, inspect_registry, parse_source
@@ -60,6 +65,12 @@ def review(
         raise typer.Exit(1) from None
     target = out if out is not None else answers.parent / "review.html"
     write_report(result, target)
+    if result.answers_version == OLD_REVIEW_VERSION:
+        typer.echo(
+            f"note: {answers} was read as review_version {OLD_REVIEW_VERSION}. Unknown answers "
+            "no longer count as a gap, so grades may improve. The file was not changed.",
+            err=True,
+        )
     width = max(len(area.area.title) for area in result.areas)
     for area in result.areas:
         detail = f" ({area.answered} of {len(area.questions)} answered)" if area.incomplete else ""

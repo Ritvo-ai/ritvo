@@ -6,6 +6,7 @@ from enum import StrEnum
 
 class Level(StrEnum):
     GAP = "gap"
+    NEEDS_VALIDATION = "needs_validation"
     PARTIAL = "partial"
     IN_PLACE = "in_place"
     NOT_ANSWERED = "not_answered"
@@ -13,13 +14,14 @@ class Level(StrEnum):
 
 LEVEL_LABELS = {
     Level.GAP: "Gap",
+    Level.NEEDS_VALIDATION: "Needs validation",
     Level.PARTIAL: "Partial",
     Level.IN_PLACE: "In place",
     Level.NOT_ANSWERED: "Not answered",
 }
 
 # Lower ranks are weaker; an area takes the weakest answered question.
-LEVEL_RANK = {Level.GAP: 0, Level.PARTIAL: 1, Level.IN_PLACE: 2}
+LEVEL_RANK = {Level.GAP: 0, Level.NEEDS_VALIDATION: 1, Level.PARTIAL: 2, Level.IN_PLACE: 3}
 
 UNKNOWN = "unknown"
 
@@ -67,7 +69,8 @@ def _question(
             gap: Level.GAP,
             partial: Level.PARTIAL,
             in_place: Level.IN_PLACE,
-            UNKNOWN: Level.GAP,
+            # Not known is not a known gap (docs/SPEC.md section 8.1).
+            UNKNOWN: Level.NEEDS_VALIDATION,
         },
         why=why,
         next_step=next_step,

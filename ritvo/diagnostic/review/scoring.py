@@ -3,6 +3,7 @@
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
@@ -17,11 +18,23 @@ from ritvo.diagnostic.review.questions import (
     Question,
 )
 
-REVIEW_VERSION = 0
+REVIEW_VERSION = 1
+# Version 0 files are still read; their unknown answers score needs_validation.
+OLD_REVIEW_VERSION = 0
+
+Source = Literal["derived", "observed", "asserted"]
+EVIDENCE_SOURCES = ("derived", "observed")
 
 
 class ReviewError(Exception):
     """The answers file cannot be read or is not valid. Nothing is written."""
+
+
+class _Basis(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    source: Source
+    evidence: str | None = None
 
 
 class _AnswersFile(BaseModel):
@@ -31,15 +44,24 @@ class _AnswersFile(BaseModel):
     organisation: str | None = None
     # YAML reads a bare yes or no as a boolean; both are option IDs, so they are mapped back.
     answers: dict[str, str | bool | None] = Field(default_factory=dict)
+    basis: dict[str, _Basis] = Field(default_factory=dict)
     notes: dict[str, str] = Field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Basis:
+    source: Source
+    evidence: str | None
 
 
 @dataclass(frozen=True)
 class Answers:
     organisation: str | None
     answers: dict[str, str]
+    basis: dict[str, Basis]
     notes: dict[str, str]
     sha256: str
+    version: int
 
 
 @dataclass(frozen=True)
@@ -48,6 +70,14 @@ class QuestionResult:
     answer: str | None
     level: Level
     note: str | None
+    basis: Basis | None
+
+    @property
+    def source(self) -> Source | None:
+        """Where the answer came from. An answer with no basis is asserted."""
+        if self.answer is None:
+            return None
+        return self.basis.source if self.basis is not None else "asserted"
 
 
 @dataclass(frozen=True)
@@ -55,6 +85,8 @@ class AreaResult:
     area: Area
     level: Level
     questions: tuple[QuestionResult, ...]
+    # Scoring rule 4 lowered the area: every answer is asserted.
+    asserted_cap: bool
 
     @property
     def answered(self) -> int:
@@ -64,12 +96,18 @@ class AreaResult:
     def incomplete(self) -> bool:
         return 0 < self.answered < len(self.questions)
 
+    @property
+    def evidence(self) -> int:
+        """Evidence coverage: answers with a basis of derived or observed. A count, not a score."""
+        return sum(1 for result in self.questions if result.source in EVIDENCE_SOURCES)
+
 
 @dataclass(frozen=True)
 class Review:
     organisation: str | None
     answers_sha256: str
     areas: tuple[AreaResult, ...]
+    answers_version: int
 
     @property
     def answered(self) -> int:
@@ -78,6 +116,10 @@ class Review:
     @property
     def total(self) -> int:
         return len(QUESTIONS)
+
+    @property
+    def evidence(self) -> int:
+        return sum(area.evidence for area in self.areas)
 
 
 def _short(value: object) -> str:
@@ -116,8 +158,10 @@ def load_answers(path: Path) -> Answers:
         raise ReviewError("; ".join(problems)) from None
 
     problems = []
-    if parsed.review_version != REVIEW_VERSION:
-        problems.append(f"review_version must be {REVIEW_VERSION}")
+    if parsed.review_version not in (REVIEW_VERSION, OLD_REVIEW_VERSION):
+        problems.append(
+            f"review_version must be {REVIEW_VERSION} ({OLD_REVIEW_VERSION} is still read)"
+        )
     valid_ids = ", ".join(QUESTIONS_BY_ID)
     answers: dict[str, str] = {}
     for qid, value in parsed.answers.items():
@@ -138,24 +182,38 @@ def load_answers(path: Path) -> Answers:
     for qid in parsed.notes:
         if qid not in QUESTIONS_BY_ID:
             problems.append(f"unknown question ID {_short(qid)} in notes; valid IDs: {valid_ids}")
+    for qid in parsed.basis:
+        if qid not in QUESTIONS_BY_ID:
+            problems.append(f"unknown question ID {_short(qid)} in basis; valid IDs: {valid_ids}")
+        elif qid not in answers:
+            problems.append(f"basis.{qid}: the question has no answer")
     if problems:
         raise ReviewError("; ".join(problems))
     return Answers(
         organisation=parsed.organisation,
         answers=answers,
+        basis={
+            qid: Basis(source=basis.source, evidence=basis.evidence)
+            for qid, basis in parsed.basis.items()
+        },
         notes=dict(parsed.notes),
         sha256=digest,
+        version=parsed.review_version,
     )
 
 
-def _area_level(results: tuple[QuestionResult, ...]) -> Level:
-    answered = [result.level for result in results if result.answer is not None]
+def _area_level(results: tuple[QuestionResult, ...]) -> tuple[Level, bool]:
+    """The area's level, and whether rule 4 (every answer asserted) lowered it."""
+    answered = [result for result in results if result.answer is not None]
     if not answered:
-        return Level.NOT_ANSWERED
-    level = min(answered, key=LEVEL_RANK.__getitem__)
-    if len(answered) < len(results) and level is Level.IN_PLACE:
-        return Level.PARTIAL
-    return level
+        return Level.NOT_ANSWERED, False
+    level = min((result.level for result in answered), key=LEVEL_RANK.__getitem__)
+    if level is not Level.IN_PLACE:
+        return level, False
+    asserted_cap = all(result.source == "asserted" for result in answered)
+    if len(answered) < len(results) or asserted_cap:
+        return Level.PARTIAL, asserted_cap
+    return level, False
 
 
 def score(answers: Answers) -> Review:
@@ -171,13 +229,18 @@ def score(answers: Answers) -> Review:
                     else Level.NOT_ANSWERED
                 ),
                 note=answers.notes.get(question.id),
+                basis=answers.basis.get(question.id),
             )
             for question in QUESTIONS
             if question.area == area
         )
-        areas.append(AreaResult(area=area, level=_area_level(results), questions=results))
+        level, asserted_cap = _area_level(results)
+        areas.append(
+            AreaResult(area=area, level=level, questions=results, asserted_cap=asserted_cap)
+        )
     return Review(
         organisation=answers.organisation,
         answers_sha256=answers.sha256,
         areas=tuple(areas),
+        answers_version=answers.version,
     )
