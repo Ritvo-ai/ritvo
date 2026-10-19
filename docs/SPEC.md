@@ -625,14 +625,14 @@ notes:                                # optional, one line per question
   agents.owner: Finance agents have owners; support agents do not.
 ```
 
-Validation: `review_version` MUST be `1`. A file with `review_version: 0` is also read, with every `unknown` read as `needs_validation`, and the result carries a notice saying so (verify: confirm this migration before it is built). An unknown question ID or option ID is an error that names the valid IDs, and nothing is written. An omitted question is `not_answered`.
+Validation: `review_version` MUST be `1`. A file with `review_version: 0` is also accepted. Every `unknown` in it is read as `needs_validation`, and the file is not rewritten. The terminal prints a message that names the file, says it was read as version 0, and says grades may improve because unknown answers no longer count as a gap. The result notes that the answers file is version 0. An unknown question ID or option ID is an error that names the valid IDs, and nothing is written. An omitted question is `not_answered`.
 
 Scoring, per area:
 
 1. If no question in the area is answered, the area is `not_answered`.
 2. Otherwise the area takes the lowest level among its answered questions, in the order above: one gap makes the area a gap, and one `needs_validation` keeps it from being better than `needs_validation`.
 3. If some questions in the area are unanswered, the area cannot be `in_place`: it is capped at `partial` and marked incomplete with the number answered.
-4. An answer whose basis is `asserted`, or that has no `basis`, cannot be scored `in_place`: it is capped at `partial` (verify: this means questions only a person can answer, such as `approval.named`, need an evidence reference to reach `in_place`; confirm before it is built).
+4. If every answered question in the area has a basis of `asserted`, the area cannot be `in_place`: it is capped at `partial`, and the result says why. An answer with no `basis` is `asserted`. The cap applies to the area; each question keeps its own level.
 
 There is no total score across areas. Each area also shows its evidence coverage: how many of its questions have a `basis` of `derived` or `observed`, out of the questions in the area. Coverage is a count, not a score.
 
@@ -779,8 +779,8 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - Owner overlay: defined in section 7.4 (decision D8). No longer open.
 - Help and errors for registry exports (proposed): `ritvo inspect --help` and the report show the commands that produce each export file, and a refusal that has a remedy says what to do without echoing a field value, for example to re-export so a partial page is whole.
 - The command that drafts an answers file from an inventory, and the sources for the Observe questions in section 8.3.
-- Whether answers with a basis of `asserted` are capped at `partial` (section 8.1, scoring rule 4), and how an evidence reference to a document is recorded.
-- The migration of `review_version: 0` files, where `unknown` scored `gap`.
+- How an evidence reference to a document is recorded (section 8.1). The cap for `asserted` answers is now defined in section 8.1, scoring rule 4.
+- The migration of `review_version: 0` files: defined in section 8.1. No longer open.
 - Which design partner's platforms set the order of inspector sources after the registry readers.
 
 ## 13. Platform support and CI
@@ -833,3 +833,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.2-draft | 19 October 2026 | `unknown` and `gap` separated: new level `needs_validation`, evidence coverage per area, answer provenance (`basis`, `evidence`), `review_version` 1 (8.1). Drafted answers, inspector first (8.3). Assisted drafting and evidence-outranks-assertion rules (9). Open items added (12). | Decisions of 19 October 2026: inspector first; split `unknown`; AI assistants allowed under governance. The owner overlay and the help text for exports are proposals, in section 12 only. |
 | 0.3-draft | 19 October 2026 | Phases mapped to spec sections with build status (14). | Phase definitions in PRD section 7, 19 October 2026. |
 | 0.4-draft | 19 October 2026 | Owner overlay defined (7.4). `ritvo inspect --owners` added to the CLI table (6.3). `manifest.owner_overlays` added and inventory `schema_version` raised to 1, with version 0 files rejected (4.8). Owner overlay closed in the open items (12). | Decision D8 |
+| 0.5-draft | 19 October 2026 | Scoring contract confirmed (8.1). A `review_version` 0 answers file is accepted: `unknown` is read as `needs_validation`, the file is not rewritten, a message names it, and the result notes it. An area whose answered questions are all `asserted` is capped at `partial`, and the result says why; an answer with no `basis` is `asserted`. Both rules closed in the open items (12). | Decisions on the scoring contract |
