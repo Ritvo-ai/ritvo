@@ -66,7 +66,7 @@ Phase numbers refer to section 7. P0 is the MVP (phases 0 to 3).
 | R-INS-6 | The middleware reports its own inventory at start-up | P0 | 2 |
 | R-INS-7 | Inventory diff and a CI check for new tools | P1 | 3 |
 | R-INS-8 | `ritvo inspect --report` writes a self-contained HTML report with one view each for platform engineers, security, policy owners and auditors; `--pdf` and `--redact` | P0 | 0 (HTML), 1 (diff, PDF, redact) |
-| R-INS-9 | Owner overlay: `ritvo inspect --owners agents.csv` merges owner and owner team into an inventory, so an agent with no owner in a registry export can be assigned one (proposed; SPEC 12) | P1 | 0 |
+| R-INS-9 | Owner overlay: `ritvo inspect --owners agents.csv` merges owner and owner team into an inventory, so an agent with no owner in a registry export can be assigned one (SPEC 7.4) | P1 | 0 |
 | R-DIA-1 | Authority gap review: 17 questions, rule-based scoring, one-page result | P0 | 0 |
 | R-DIA-2 | Diagnostic: draft `ritvo.yaml`, authority matrix, gap rules, starter control mapping, report. The intake reader is called by `ritvo diagnose`, and its errors suggest fixes | P0 | 0 |
 | R-DIA-3 | Scoring keeps a known gap apart from an unknown: level `needs_validation`, evidence coverage per area, answer provenance (`basis`, `evidence`), `review_version` 1 (SPEC 8.1) | P0 | 0 |
@@ -136,8 +136,8 @@ Status of phase 0:
 | State | Items |
 | --- | --- |
 | Built | `ritvo review`; intake templates and their reader (the reader is not yet called by `ritvo diagnose`); repository hygiene and CI |
-| Specified, not built | Inventory format; registry exports; scoring contract; drafted answers; assisted drafting rules; config discovery locations |
-| Proposed, not agreed | Owner overlay; help text and remedy hints for export errors |
+| Specified, not built | Inventory format; registry exports; scoring contract; drafted answers; assisted drafting rules; config discovery locations; owner overlay |
+| Proposed, not agreed | Help text and remedy hints for export errors |
 | Not started | Additive re-run; interview assistant; DoA import; questionnaire init; `ritvo diagnose` beyond templates |
 
 Where a person is still asked, by phase:
@@ -183,3 +183,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | --- | --- | --- |
 | draft v0.1 | 13 October 2026 | First draft |
 | draft v0.2 | 19 October 2026 | Phases 0 to 3 defined with purpose, deliverables, exit and status (section 7). Requirements added for the scoring split, drafted answers, additive re-run, interview assistant, owner overlay, machine-draft rule, observe-derived proposals and pre-ask resolution. Gap review question count corrected to 17. Metrics added. |
+| draft v0.3 | 19 October 2026 | Owner overlay specified (R-INS-9, SPEC 7.4) and moved to "Specified, not built" in the phase 0 status (section 7). |
