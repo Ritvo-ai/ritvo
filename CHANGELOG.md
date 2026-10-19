@@ -23,5 +23,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Version set to 0.0.1.dev0, a pre-alpha placeholder release that reserves the package name on PyPI.
+- Spec 0.2-draft: separate `unknown` from `gap` with a `needs_validation` level, add answer provenance and evidence coverage, define drafted answers and assisted drafting.
 
 [Unreleased]: https://github.com/Ritvo-ai/ritvo/commits/main
