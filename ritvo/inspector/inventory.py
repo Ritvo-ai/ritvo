@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-SCHEMA_VERSION = 0
+SCHEMA_VERSION = 1
 
 # The ID rule of docs/SPEC.md section 8.2.
 ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
@@ -44,6 +44,13 @@ class RegistryExport(_Model):
     agents: Count
 
 
+class OwnerOverlay(_Model):
+    agent: Id
+    field: Literal["owner", "owner_team"]
+    previous: Id | None
+    source_row: Annotated[StrictInt, Field(ge=1)]
+
+
 class Manifest(_Model):
     paths: list[StrictStr]
     files_read: Count
@@ -51,6 +58,7 @@ class Manifest(_Model):
     servers_contacted: list[Id]
     env_names_seen: list[StrictStr]
     registry_exports: list[RegistryExport]
+    owner_overlays: list[OwnerOverlay]
 
 
 class Agent(_Model):
@@ -152,6 +160,11 @@ def load_inventory(path: Path) -> Inventory:
     if not isinstance(data, dict):
         raise InventoryError(f"{path.name} must hold one JSON object")
     version = data.get("schema_version")
+    if type(version) is int and version == 0:
+        raise InventoryError(
+            f"{path.name} has schema_version 0, written before manifest.owner_overlays "
+            "existed; run the inspector again to write a version 1 inventory"
+        )
     if type(version) is not int or version != SCHEMA_VERSION:
         raise InventoryError(
             f"{path.name}: schema_version must be {SCHEMA_VERSION}; "

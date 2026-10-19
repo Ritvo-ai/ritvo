@@ -38,6 +38,7 @@ class Agent:
     mode: Mode | None
     credential: str | None
     tools: tuple[str, ...] | None
+    line: int
 
 
 @dataclass(frozen=True)
@@ -239,6 +240,7 @@ def load_intake(directory: Path) -> Intake:
                 mode=row.choice("mode", Mode),
                 credential=row.text("credential"),
                 tools=row.ids("tools"),
+                line=row.line,
             ),
         )
         for row in agent_rows or []
