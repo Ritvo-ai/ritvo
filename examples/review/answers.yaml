@@ -2,11 +2,14 @@
 # Copy this file, change the answers and run:  ritvo review answers.yaml
 # The questions and scoring are defined in docs/SPEC.md section 8.1.
 #
-# Each answer is one of the option IDs listed above it, or `unknown` (scored as a gap).
+# Each answer is one of the option IDs listed above it, or `unknown` (scored as needs_validation).
 # Leave a question out, or comment it out, to mark it not answered.
+# basis says where an answer came from: derived (read from a file or export),
+# observed (taken from logs or records) or asserted (a person said so).
+# An answer with no basis is asserted. evidence is a reference, never a value.
 # Do not commit a real organisation's answers to a public repository.
 
-review_version: 0
+review_version: 1
 organisation: Example Logistics Ltd
 
 answers:
@@ -70,6 +73,20 @@ answers:
   # Does the record show both the agent and the person who asked the agent to do the task, with a distinct identity for each agent?
   # no | agent_only | both
   record.identity: agent_only
+
+# Optional: where each answer came from. See docs/SPEC.md section 8.1, Provenance.
+basis:
+  agents.inventory:
+    source: derived
+    evidence: inventory.json sha256:0e5659110f58d3d8927d051a33561ee4402c899f569f17ae11b868aa32b04323
+  agents.owner:
+    source: derived
+    evidence: inventory.json sha256:0e5659110f58d3d8927d051a33561ee4402c899f569f17ae11b868aa32b04323
+  record.decisions:
+    source: observed
+    evidence: approvals log export sha256:c1b4b8273ff90972ae8c133055bda2f1bf41bbea161db4f1c8995ceef98da28c
+  approval.named:
+    source: asserted
 
 # Optional: one line of context per question, shown on the result.
 notes:

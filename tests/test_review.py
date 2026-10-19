@@ -25,11 +25,16 @@ def _write(tmp_path: Path, text: str) -> Path:
     return path
 
 
-def _review(tmp_path: Path, answers: dict[str, str], extra: str = "") -> Review:
-    lines = ["review_version: 0", "answers:"]
+def _review(
+    tmp_path: Path, answers: dict[str, str], extra: str = "", basis: dict[str, str] | None = None
+) -> Review:
+    lines = ["review_version: 1", "answers:"]
     lines += [f'  {qid}: "{value}"' for qid, value in answers.items()]
     if not answers:
         lines[-1] = "answers: {}"
+    if basis:
+        lines.append("basis:")
+        lines += [f"  {qid}:\n    source: {source}" for qid, source in basis.items()]
     return score(load_answers(_write(tmp_path, "\n".join(lines) + "\n" + extra)))
 
 
@@ -51,10 +56,11 @@ def test_seventeen_questions_in_five_areas() -> None:
         assert all(q.id.startswith(area.id + ".") for q in in_area)
     for question in QUESTIONS:
         levels = list(question.options.values())
-        assert levels.count(Level.GAP) == 2  # the gap option and unknown
+        assert levels.count(Level.GAP) == 1
+        assert levels.count(Level.NEEDS_VALIDATION) == 1  # unknown
         assert levels.count(Level.PARTIAL) == 1
         assert levels.count(Level.IN_PLACE) == 1
-        assert question.options[UNKNOWN] is Level.GAP
+        assert question.options[UNKNOWN] is Level.NEEDS_VALIDATION
         assert question.why and question.next_step
 
 
@@ -101,26 +107,94 @@ def test_area_takes_weakest_answer(tmp_path: Path) -> None:
     assert _area(review, "agents").level is Level.GAP
 
 
+ALL_IN_PLACE = {
+    "agents.inventory": "complete",
+    "agents.owner": "all",
+    "agents.reach": "all",
+    "agents.new_tools": "needs_decision",
+}
+
+
 def test_all_in_place(tmp_path: Path) -> None:
-    review = _review(
-        tmp_path,
-        {
-            "agents.inventory": "complete",
-            "agents.owner": "all",
-            "agents.reach": "all",
-            "agents.new_tools": "needs_decision",
-        },
-    )
+    review = _review(tmp_path, ALL_IN_PLACE, basis={"agents.inventory": "derived"})
     area = _area(review, "agents")
     assert area.level is Level.IN_PLACE
     assert not area.incomplete
+    assert not area.asserted_cap
+    assert area.evidence == 1
 
 
-def test_incomplete_area_is_capped_at_partial(tmp_path: Path) -> None:
-    review = _review(tmp_path, {"agents.inventory": "complete", "agents.owner": "all"})
+@pytest.mark.parametrize(
+    "basis",
+    [None, {"agents.inventory": "asserted"}, {qid: "asserted" for qid in ALL_IN_PLACE}],
+)
+def test_all_asserted_area_is_capped_at_partial(
+    tmp_path: Path, basis: dict[str, str] | None
+) -> None:
+    review = _review(tmp_path, ALL_IN_PLACE, basis=basis)
+    area = _area(review, "agents")
+    assert area.level is Level.PARTIAL
+    assert area.asserted_cap
+    assert area.evidence == 0
+    # The cap applies to the area; each question keeps its own level.
+    assert all(result.level is Level.IN_PLACE for result in area.questions)
+    assert all(result.source == "asserted" for result in area.questions)
+
+
+def test_one_observed_answer_lifts_the_cap(tmp_path: Path) -> None:
+    review = _review(tmp_path, ALL_IN_PLACE, basis={"agents.reach": "observed"})
+    assert _area(review, "agents").level is Level.IN_PLACE
+
+
+def test_asserted_cap_only_when_it_lowers_the_area(tmp_path: Path) -> None:
+    review = _review(tmp_path, ALL_IN_PLACE | {"agents.owner": "some"})
+    area = _area(review, "agents")
+    assert area.level is Level.PARTIAL
+    assert not area.asserted_cap
+
+
+def test_incomplete_and_asserted(tmp_path: Path) -> None:
+    review = _review(tmp_path, {"agents.inventory": "complete"})
     area = _area(review, "agents")
     assert area.level is Level.PARTIAL
     assert area.incomplete
+    assert area.asserted_cap
+
+
+def test_level_order(tmp_path: Path) -> None:
+    # gap, needs_validation, partial, in_place, from worst to best.
+    review = _review(tmp_path, {"record.decisions": "partly", "record.tamper": "unknown"})
+    assert _area(review, "record").level is Level.NEEDS_VALIDATION
+    review = _review(tmp_path, {"record.decisions": "no", "record.tamper": "unknown"})
+    assert _area(review, "record").level is Level.GAP
+
+
+def test_evidence_coverage(tmp_path: Path) -> None:
+    review = _review(
+        tmp_path,
+        {"record.decisions": "yes", "record.tamper": "unknown", "record.identity": "both"},
+        basis={
+            "record.decisions": "observed",
+            "record.tamper": "derived",
+            "record.identity": "asserted",
+        },
+    )
+    area = _area(review, "record")
+    assert area.evidence == 2
+    assert review.evidence == 2
+    assert [result.source for result in area.questions] == ["observed", "derived", "asserted"]
+
+
+def test_incomplete_area_is_capped_at_partial(tmp_path: Path) -> None:
+    review = _review(
+        tmp_path,
+        {"agents.inventory": "complete", "agents.owner": "all"},
+        basis={"agents.inventory": "derived", "agents.owner": "derived"},
+    )
+    area = _area(review, "agents")
+    assert area.level is Level.PARTIAL
+    assert area.incomplete
+    assert not area.asserted_cap
     assert area.answered == 2
 
 
@@ -144,10 +218,20 @@ def test_unanswered_area(tmp_path: Path) -> None:
     assert review.answered == 0
 
 
-def test_unknown_scores_gap(tmp_path: Path) -> None:
+def test_unknown_scores_needs_validation(tmp_path: Path) -> None:
     review = _review(tmp_path, {"record.tamper": "unknown"})
     result = _area(review, "record").questions[1]
-    assert result.level is Level.GAP
+    assert result.level is Level.NEEDS_VALIDATION
+    assert _area(review, "record").level is Level.NEEDS_VALIDATION
+
+
+def test_version_0_file_is_read(tmp_path: Path) -> None:
+    path = _write(tmp_path, "review_version: 0\nanswers:\n  record.tamper: unknown\n")
+    before = path.read_bytes()
+    review = score(load_answers(path))
+    assert review.answers_version == 0
+    assert _area(review, "record").questions[1].level is Level.NEEDS_VALIDATION
+    assert path.read_bytes() == before
 
 
 def test_bare_yes_and_no_are_options(tmp_path: Path) -> None:
@@ -180,9 +264,12 @@ def test_example_file_scores() -> None:
         "approval": Level.PARTIAL,
         "escalation": Level.GAP,
         "policy_change": Level.PARTIAL,
-        "record": Level.GAP,
+        # record.tamper is unknown: not known, so not a gap.
+        "record": Level.NEEDS_VALIDATION,
     }
     assert review.answered == 16
+    assert review.evidence == 3
+    assert review.answers_version == 1
     assert review.organisation == "Example Logistics Ltd"
 
 
@@ -192,7 +279,8 @@ def test_example_file_scores() -> None:
 @pytest.mark.parametrize(
     ("text", "message"),
     [
-        ("review_version: 1\n", "review_version must be 0"),
+        ("review_version: 2\n", "review_version must be 1 (0 is still read)"),
+        ("review_version: true\n", "review_version"),
         ("review_version: false\n", "review_version"),
         ("review_version: 0.0\n", "review_version"),
         ('review_version: "0"\n', "review_version"),
@@ -204,6 +292,28 @@ def test_example_file_scores() -> None:
         ("review_version: 0\nanswers:\n  agents.owner: most\n", "valid options: none, some, all"),
         ("review_version: 0\nnotes:\n  nope: text\n", "unknown question ID 'nope' in notes"),
         ("review_version: 0\nanswers:\n  agents.owner: 3\n", "answers.agents.owner"),
+        (
+            "review_version: 1\nbasis:\n  nope.x:\n    source: derived\n",
+            "unknown question ID 'nope.x' in basis",
+        ),
+        (
+            "review_version: 1\nbasis:\n  agents.owner:\n    source: derived\n",
+            "basis.agents.owner: the question has no answer",
+        ),
+        (
+            "review_version: 1\nanswers:\n  agents.owner: all\n"
+            "basis:\n  agents.owner:\n    source: guessed\n",
+            "basis.agents.owner.source",
+        ),
+        (
+            "review_version: 1\nanswers:\n  agents.owner: all\n"
+            "basis:\n  agents.owner:\n    source: derived\n    value: x\n",
+            "basis.agents.owner.value",
+        ),
+        (
+            "review_version: 1\nanswers:\n  agents.owner: all\nbasis:\n  agents.owner: derived\n",
+            "basis.agents.owner",
+        ),
     ],
 )
 def test_invalid_files(tmp_path: Path, text: str, message: str) -> None:
@@ -294,6 +404,42 @@ def test_report_escapes_notes_and_organisation(tmp_path: Path) -> None:
     assert "&lt;b&gt;Org&lt;/b&gt;" in html
 
 
+def test_report_shows_basis_and_coverage(tmp_path: Path) -> None:
+    path = _write(
+        tmp_path,
+        "review_version: 1\nanswers:\n  agents.owner: some\n  agents.reach: none\n"
+        "basis:\n  agents.owner:\n    source: derived\n"
+        '    evidence: "inventory.json sha256:abc <b>"\n',
+    )
+    html = render_html(score(load_answers(path)), date(2026, 10, 19))
+    assert (
+        '<code>derived</code><span class="evidence-ref">, '
+        '<span class="mono">inventory.json sha256:abc &lt;b&gt;</span></span>'
+    ) in html
+    assert "asserted, no basis given" in html
+    assert "Evidence: 1 of 4" in html
+    assert "Evidence: 0 of 3" in html
+    assert "2 of 17 questions answered,\n        1 backed by evidence." in html
+    assert "File version" not in html
+
+
+def test_report_says_why_an_area_was_capped(tmp_path: Path) -> None:
+    review = _review(tmp_path, ALL_IN_PLACE)
+    html = render_html(review, date(2026, 10, 19))
+    assert html.count("Capped at partial: every answer is asserted, with no evidence") == 1
+    html = render_html(
+        _review(tmp_path, ALL_IN_PLACE, basis={"agents.owner": "derived"}), date(2026, 10, 19)
+    )
+    assert "Capped at partial" not in html
+
+
+def test_report_notes_a_version_0_file(tmp_path: Path) -> None:
+    path = _write(tmp_path, "review_version: 0\nanswers:\n  record.tamper: unknown\n")
+    html = render_html(score(load_answers(path)), date(2026, 10, 19))
+    assert "review_version 0: unknown answers were read as needs validation" in html
+    assert "answers.yaml" not in html
+
+
 def test_every_level_has_a_shape(tmp_path: Path) -> None:
     html = _html(tmp_path)
     for level in Level:
@@ -312,6 +458,19 @@ def test_cli_writes_beside_answers(tmp_path: Path) -> None:
     assert "Agents and what they can do" in result.output
     assert "How the rules change              Partial (2 of 3 answered)" in result.output
     assert "Wrote" in result.output
+
+
+def test_cli_version_0_message(tmp_path: Path) -> None:
+    path = _write(tmp_path, "review_version: 0\nanswers:\n  record.tamper: unknown\n")
+    before = path.read_bytes()
+    result = runner.invoke(app, ["review", str(path)])
+    assert result.exit_code == 0, result.output
+    assert f"note: {path} was read as review_version 0." in result.output
+    assert "grades may improve" in result.output
+    assert "no longer count as a gap" in result.output
+    assert path.read_bytes() == before
+    result = runner.invoke(app, ["review", str(EXAMPLE), "--out", str(tmp_path / "r.html")])
+    assert "note:" not in result.output
 
 
 def test_cli_out(tmp_path: Path) -> None:

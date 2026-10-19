@@ -5,6 +5,8 @@
 <svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 10 9H0Z" fill="currentColor"/></svg>
 {% elif level == "gap" %}
 <svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 10 5 5 10 0 5Z" fill="currentColor"/></svg>
+{% elif level == "needs_validation" %}
+<svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>
 {% else %}
 <svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 1.5"/></svg>
 {% endif %}
@@ -22,6 +24,7 @@
   --line: #D2DBDF; --line2: #E6ECEF; --accent: #0B6B7C;
   --p1: #B3261E; --p1-bg: #FBE9E7; --p2: #9A5200; --p2-bg: #FCEFD9;
   --ok: #2E7D4F; --ok-bg: #E4F2EA; --unk: #8A979D;
+  --nv: #3A55A0; --nv-bg: #E7ECF8;
   --f-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --f-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 }
@@ -31,6 +34,7 @@
     --line: #2A3C46; --line2: #20313A; --accent: #5EC0D1;
     --p1: #FF8A80; --p1-bg: #3A1E1D; --p2: #F2B35E; --p2-bg: #3A2B14;
     --ok: #7FD1A0; --ok-bg: #173226; --unk: #6F8088;
+    --nv: #A9BCF2; --nv-bg: #1E2840;
     color-scheme: dark;
   }
 }
@@ -52,10 +56,13 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
 .area:first-child { border-left: 0; }
 .area h2 { font-size: 14px; font-weight: 600; }
 .area .count { font-size: 12.5px; color: var(--ink2); }
+.area .count .evidence { display: block; }
+.area .count .sep { display: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 4px; white-space: nowrap; }
 .st-in_place { background: var(--ok-bg); color: var(--ok); }
 .st-partial { background: var(--p2-bg); color: var(--p2); }
 .st-gap { background: var(--p1-bg); color: var(--p1); }
+.st-needs_validation { background: var(--nv-bg); color: var(--nv); }
 .st-not_answered { background: var(--line2); color: var(--ink2); }
 .ico { width: 10px; height: 10px; flex: none; }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--ink2); }
@@ -68,7 +75,7 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
 .finding .area-name { font-size: 12.5px; color: var(--muted); }
 .finding dl { margin: 6px 0 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 4px 12px; font-size: 13.5px; }
 .finding dt { color: var(--muted); }
-.finding dd { margin: 0; }
+.finding dd { margin: 0; overflow-wrap: anywhere; }
 .none { padding: 14px 16px; color: var(--ink2); }
 .foot { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 4px; }
 @media screen and (max-width: 820px) {
@@ -85,6 +92,7 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
     --line: #C5CFD4; --line2: #E1E7EA; --accent: #0B6B7C;
     --p1: #B3261E; --p1-bg: #FBE9E7; --p2: #9A5200; --p2-bg: #FCEFD9;
     --ok: #2E7D4F; --ok-bg: #E4F2EA; --unk: #8A979D;
+    --nv: #3A55A0; --nv-bg: #E7ECF8;
   }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { padding: 0; font-size: 6.8pt; line-height: 1.24; }
@@ -113,6 +121,11 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
   .finding dt::after { content: ": "; }
   .finding dd { display: inline; }
   .finding dd::after { content: ""; display: block; }
+  .finding dd.answer::after { content: "  "; display: inline; white-space: pre; }
+  .area .count .evidence { display: inline; }
+  .area .count .sep { display: inline; }
+  /* Evidence is free text of any length; print shows the basis, the screen shows both. */
+  .evidence-ref { display: none; }
   .foot { font-size: 6.2pt; padding-top: 3px; gap: 0; }
 }
 </style>
@@ -129,13 +142,17 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
         {% else %}
         No area has a gap.
         {% endif %}
-        {{ review.answered }} of {{ review.total }} questions answered.
+        {{ review.answered }} of {{ review.total }} questions answered,
+        {{ review.evidence }} backed by evidence.
         Each area takes the level of its weakest answer.
       </p>
     </div>
     <dl class="meta">
       <dt>Date</dt><dd>{{ generated }}</dd>
       <dt>Answers file</dt><dd class="mono">SHA-256 {{ review.answers_sha256 }}</dd>
+      {% if review.answers_version == 0 %}
+      <dt>File version</dt><dd>review_version 0: unknown answers were read as needs validation, not as a gap</dd>
+      {% endif %}
       <dt>Questions</dt><dd>{{ review.answered }} of {{ review.total }} answered</dd>
       <dt>Produced by</dt><dd>ritvo review {{ version }}</dd>
     </dl>
@@ -147,14 +164,19 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
       <h2>{{ area.area.title }}</h2>
       {{ chip(area.level.value) }}
       <p class="count">
-        {{ area.answered }} of {{ area.questions | length }} answered{% if area.incomplete %}, incomplete{% endif %}
+        {{ area.answered }} of {{ area.questions | length }} answered{% if area.incomplete %}, incomplete{% endif %}<span class="sep">. </span>
+        <span class="evidence">Evidence: {{ area.evidence }} of {{ area.questions | length }}</span>
       </p>
+      {% if area.asserted_cap %}
+      <p class="count">Capped at partial: every answer is asserted, with no evidence</p>
+      {% endif %}
     </div>
     {% endfor %}
   </section>
 
   <p class="legend">
-    <span>{{ chip("gap") }} missing, or not known</span>
+    <span>{{ chip("gap") }} known to be missing</span>
+    <span>{{ chip("needs_validation") }} not known, or no evidence; not a failure</span>
     <span>{{ chip("partial") }} some agents, some of the time, or informal</span>
     <span>{{ chip("in_place") }} written down, applies to every agent</span>
     <span>{{ chip("not_answered") }} never counted as in place</span>
@@ -175,7 +197,10 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
         <div>
           <h3>{{ result.question.text }}</h3>
           <dl>
-            <dt>Answer</dt><dd>{% if result.answer is none %}Not answered{% else %}<code>{{ result.answer }}</code>{% endif %}</dd>
+            <dt>Answer</dt><dd class="answer">{% if result.answer is none %}Not answered{% else %}<code>{{ result.answer }}</code>{% endif %}</dd>
+            {% if result.answer is not none %}
+            <dt>Basis</dt><dd>{% if result.basis is none %}asserted, no basis given{% else %}<code>{{ result.basis.source }}</code>{% if result.basis.evidence %}<span class="evidence-ref">, <span class="mono">{{ result.basis.evidence }}</span></span>{% endif %}{% endif %}</dd>
+            {% endif %}
             {% if result.note %}
             <dt>Note</dt><dd>{{ result.note }}</dd>
             {% endif %}
@@ -194,7 +219,7 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
 
   <footer class="foot">
     <p>The answers are self-reported. This result is not a conformity assessment and does not test any system.</p>
-    <p>Levels: an area with any gap is a gap; an area with unanswered questions cannot be in place. There is no total score.</p>
+    <p>Levels: an area with any gap is a gap; an area with unanswered questions, or whose answers are all asserted, cannot be in place. Evidence is a count of answers with a basis of derived or observed. There is no total score.</p>
   </footer>
 </div>
 </body>
