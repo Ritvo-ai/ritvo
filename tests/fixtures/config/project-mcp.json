@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "Demo MCP": {
+      "command": "/usr/local/bin/npx -y fixture-arg-never-copied",
+      "args": ["fixture-arg-never-copied"],
+      "env": { "FIXTURE_ENV_NAME": "fixture-env-value-never-copied" }
+    },
+    "remote": {
+      "type": "http",
+      "url": "https://fixture-user:fixture-password-never-copied@mcp.example.com:8443/fixture-path-never-copied?key=fixture-query-never-copied#frag",
+      "headers": { "Authorization": "Bearer fixture-header-never-copied" }
+    }
+  }
+}

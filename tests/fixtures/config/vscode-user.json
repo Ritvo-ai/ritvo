@@ -1,0 +1,6 @@
+{
+  "inputs": [{ "type": "promptString", "id": "fixture-input", "password": true }],
+  "servers": {
+    "fetch": { "type": "stdio", "command": "uvx", "args": ["mcp-server-fetch"], "envFile": "/fixture/path-never-copied/.env" }
+  }
+}

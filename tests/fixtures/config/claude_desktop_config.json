@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/fixture/path-never-copied"],
+      "env": { "FIXTURE_SECRET_NAME": "fixture-secret-never-copied" }
+    }
+  }
+}

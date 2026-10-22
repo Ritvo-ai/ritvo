@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "Linear": { "url": "https://mcp.example.org/sse/fixture-path-never-copied" }
+  }
+}

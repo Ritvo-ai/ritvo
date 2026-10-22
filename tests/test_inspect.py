@@ -584,6 +584,8 @@ def test_help_shows_the_export_commands() -> None:
 # Boundaries (docs/SPEC.md sections 3 and 7)
 
 NETWORK_MODULES = {"socket", "ssl", "http", "urllib", "httpx", "requests", "aiohttp", "subprocess"}
+# Parses URL text only; it opens no connection.
+ALLOWED_MODULES = {"urllib.parse"}
 
 
 @pytest.mark.parametrize("package", ["inspector", "connectors"])
@@ -597,6 +599,8 @@ def test_no_network_no_governance_imports(package: str) -> None:
             elif isinstance(node, ast.ImportFrom) and node.module:
                 names = [node.module]
             for name in names:
+                if name in ALLOWED_MODULES:
+                    continue
                 assert name.split(".")[0] not in NETWORK_MODULES, f"{source}: {name}"
                 assert "governance_os" not in name, f"{source}: {name}"
         # Never read environment values (docs/SPEC.md section 7).
