@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.7-draft · 22 October 2026 · Licence: Apache-2.0
+Version 0.8-draft · 22 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -544,7 +544,7 @@ Design reference: `docs/design/inspect-report-sample.html` is a sample with fict
 
 ### 7.3 Registry exports
 
-`ritvo inspect --registry <platform>:<file>` reads an agent list that the operator exported from a client platform with that platform's own tool, and writes its agents to `inventory.json` with `source: registry`. It reads only the named files and never calls the platform. `--registry` may be given more than once. `--out` sets the inventory path; the default is `inventory.json` in the current directory. Each run writes a new inventory from the sources it is given. Until the other phase 0 sources land, `ritvo inspect` needs at least one `--registry`.
+`ritvo inspect --registry <platform>:<file>` reads an agent list that the operator exported from a client platform with that platform's own tool, and writes its agents to `inventory.json` with `source: registry`. It reads only the named files and never calls the platform. `--registry` may be given more than once. `--out` sets the inventory path; the default is `inventory.json` in the current directory. Each run writes a new inventory from the sources it is given. `ritvo inspect` needs at least one `--registry`, `--defaults` or `--config` (section 7.1), or `--inventory` with `--owners` (section 7.4).
 
 Platforms:
 
@@ -576,6 +576,15 @@ Rules:
 - Findings from this source: `agent.no_owner` for each agent whose owner is null, and `identity.shared_key_name` for each credential that two or more agents share, with `subject` the credential and `agents` the agents that share it.
 - The manifest lists each file in `paths`, counts it in `files_read`, and adds one `registry_exports` entry per file.
 - The terminal prints the number of agents read from each file, the number of findings by rule, and the path written. Exit status: 0 when the inventory is written, non-zero otherwise.
+
+Help and remedies:
+
+- `ritvo inspect --help` ends with, for each platform, what to export and the command for each accepted file, with a suggested output file name: for `agentcore`, `list-agent-runtimes` to `agentcore-runtimes.json` and optionally `get-agent-runtime` per runtime to `agentcore-runtime-<id>.json`, which adds the role the runtime runs as; for `vertex`, the `reasoningEngines.list` REST method called with `curl` and a `gcloud` access token, to `vertex-reasoning-engines.json`. The inspect report (section 7.2) shows the same commands.
+- A file that is missing, is not UTF-8 JSON, is not one of the accepted shapes, or whose agent list is not a list is refused with an error that ends with the export commands for that platform.
+- A partial page is refused with what to re-export: for `agentcore`, without `--max-items` or `--no-paginate`, so the whole list is in one file; for `vertex`, with a larger `pageSize`, or with the `reasoningEngines` of every page combined into one JSON array.
+- A Vertex owner label that is not a valid ID gives a warning that it was ignored and the field stays unknown.
+- Errors about one agent (a missing required field, a name that gives no valid ID, an entry that is not an object) name the file and position and carry no remedy.
+- A remedy never echoes a field value from the file.
 
 ### 7.4 Owner overlay
 
@@ -832,7 +841,7 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - Whether any candidate gateway or cloud policy engine accepts an external decision hook or a signed grant.
 - Launch stages of the cloud platform identity features used in the documentation.
 - Owner overlay: defined in section 7.4 (decision D8). No longer open.
-- Help and errors for registry exports (proposed): `ritvo inspect --help` and the report show the commands that produce each export file, and a refusal that has a remedy says what to do without echoing a field value, for example to re-export so a partial page is whole.
+- Help and errors for registry exports: defined in section 7.3, Help and remedies. No longer open.
 - The command that drafts an answers file from an inventory, and the sources for the Observe questions in section 8.3.
 - Config files with comments and trailing commas (section 7.1). VS Code documents `mcp.json` as accepting them; the reader accepts strict JSON only, so such a file is listed as unreadable.
 - How an evidence reference to a document is recorded (section 8.1). The cap for `asserted` answers is now defined in section 8.1, scoring rule 4.
@@ -892,3 +901,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.5-draft | 19 October 2026 | Scoring contract confirmed (8.1). A `review_version` 0 answers file is accepted: `unknown` is read as `needs_validation`, the file is not rewritten, a message names it, and the result notes it. An area whose answered questions are all `asserted` is capped at `partial`, and the result says why; an answer with no `basis` is `asserted`. Both rules closed in the open items (12). | Decisions on the scoring contract |
 | 0.6-draft | 19 October 2026 | Config discovery defined (7.1): locations checked against client documentation, location keys, server IDs, field rules and `--config` and `--project`. Unverified locations listed as not built. Server URLs keep scheme, host and port only (4.8). CLI rows for `--defaults` and `--config` (6.3). | Decisions on config discovery |
 | 0.7-draft | 22 October 2026 | Config discovery rules the first build relied on, written down (7.1): `--project` and `--config` option rules, unset `APPDATA`, ID suffix after the cut, non-string fields, `type` deciding transport, URL and command parsing, `env_names_seen` order, manifest path order and `files_read` counting, strict JSON, partly unreadable `~/.claude.json`, entries that are not objects, server order, terminal lines, `--out` guard. Comments in config files added to the open items (12). Phase 0 build status brought up to date (14). | Pull request 21 |
+| 0.8-draft | 22 October 2026 | Help and remedies for registry exports agreed and defined (7.3), as built with the registry readers; closed in the open items (12). The rule that `ritvo inspect` needs a `--registry` updated for config discovery and the owner overlay (7.3). | Maintainer approval of the export help proposal |

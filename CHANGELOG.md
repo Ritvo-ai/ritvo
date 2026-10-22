@@ -34,5 +34,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Spec 0.6-draft: define config discovery (`ritvo inspect --defaults`, `--config`, `--project`) for Claude Code, Claude Desktop, Cursor and VS Code, with paths checked against each client's documentation; MCP server URLs keep scheme, host and port only.
 - Spec 0.7-draft: write down the config discovery rules the first build relies on (option rules, unset `APPDATA`, field parsing, manifest order and counts, strict JSON, partly unreadable files, server order, terminal output, the `--out` guard); add comments in config files to the open items; bring the phase 0 build status up to date.
 - PRD draft v0.4: bring the phase 0 status up to date with what is built.
+- Spec 0.8-draft: agree and define the help text and remedy hints for registry exports (section 7.3); `ritvo inspect` no longer described as needing `--registry`. PRD draft v0.5: export help moved to built.
 
 [Unreleased]: https://github.com/Ritvo-ai/ritvo/commits/main

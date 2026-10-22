@@ -1,6 +1,6 @@
 # Ritvo — Product Requirements (PRD)
 
-Status: draft v0.4 · 22 October 2026 · Owner: SK · Licence: Apache-2.0
+Status: draft v0.5 · 22 October 2026 · Owner: SK · Licence: Apache-2.0
 
 ## 1. Summary
 
@@ -135,9 +135,8 @@ Status of phase 0:
 
 | State | Items |
 | --- | --- |
-| Built | `ritvo review` with the scoring contract; intake templates and their reader (the reader is not yet called by `ritvo diagnose`); inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); repository hygiene and CI |
+| Built | `ritvo review` with the scoring contract; intake templates and their reader (the reader is not yet called by `ritvo diagnose`); inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; repository hygiene and CI |
 | Specified, not built | Drafted answers; assisted drafting rules; code and environment scan; the HTML inspect report |
-| Proposed, not agreed | Help text and remedy hints for export errors (already shown by `ritvo inspect --help` and the registry readers' errors; awaiting agreement) |
 | Not started | Additive re-run; interview assistant; DoA import; questionnaire init; `ritvo diagnose` beyond templates |
 
 Where a person is still asked, by phase:
@@ -185,3 +184,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | draft v0.2 | 19 October 2026 | Phases 0 to 3 defined with purpose, deliverables, exit and status (section 7). Requirements added for the scoring split, drafted answers, additive re-run, interview assistant, owner overlay, machine-draft rule, observe-derived proposals and pre-ask resolution. Gap review question count corrected to 17. Metrics added. |
 | draft v0.3 | 19 October 2026 | Owner overlay specified (R-INS-9, SPEC 7.4) and moved to "Specified, not built" in the phase 0 status (section 7). |
 | draft v0.4 | 22 October 2026 | Phase 0 status brought up to date (section 7): inventory format, registry exports, owner overlay, scoring contract and config discovery moved to built; code and environment scan and the HTML inspect report listed as specified, not built; export help noted as shown ahead of agreement. Status line corrected to the current version. |
+| draft v0.5 | 22 October 2026 | Help text and remedy hints for export errors agreed (SPEC 7.3) and moved to built in the phase 0 status (section 7). |
