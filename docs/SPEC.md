@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.6-draft · 19 October 2026 · Licence: Apache-2.0
+Version 0.7-draft · 22 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -474,7 +474,11 @@ Not built yet (verify). Each is checked against the client's documentation befor
 | Codex CLI `~/.codex/config.toml` | Not checked yet |
 | Gemini CLI `~/.gemini/settings.json` | Not checked yet |
 
-`--config` clients: `claude-code`, `claude-desktop`, `cursor` and `vscode`. A `claude-code` file is read like `~/.claude.json`: top-level `mcpServers`, and `projects.<path>.mcpServers` if present.
+`--config` clients: `claude-code`, `claude-desktop`, `cursor` and `vscode`. A `claude-code` file is read like `~/.claude.json`: top-level `mcpServers`, and `projects.<path>.mcpServers` if present. The whole file is one location with one key, so top-level and project servers share one set of IDs.
+
+`--project` MUST name an existing folder and is accepted only with `--defaults`. Naming the same `--config` file twice, after resolving the path, is refused and nothing is written.
+
+Home is pathlib's home folder: `HOME`, or `USERPROFILE` on Windows. `APPDATA` is read on Windows only. If it is not set, `claude-desktop`, `vscode-user` and `vscode-profile` are not checked and not listed in `manifest.paths`, and the terminal says that `APPDATA` is not set.
 
 Server IDs:
 
@@ -482,23 +486,29 @@ Server IDs:
 - Where one location holds several files or scopes, the key adds `-` and the first 8 hex characters of a SHA-256. That is the hash of the project path for `claude-code-local`, of the profile folder name for `vscode-profile`, and of the file path as given for `--config`. Project paths and file paths are never written to the inventory.
 - `--config` keys are `<client>-config`, for example `cursor-config-1a2b3c4d.github`.
 - The name is normalised to lower case. Any character outside `a-z`, `0-9`, `.`, `_` and `-` becomes `-`. Leading characters that are not a letter or digit are removed. An empty result becomes `server`. The ID is cut to 64 characters.
-- If two servers in one location normalise to the same ID, the later ones get `-2`, `-3` and so on, in file order.
+- If two servers in one location normalise to the same ID, the later ones get `-2`, `-3` and so on, in file order. The suffix is added after the cut, so the base is shortened to keep the ID within 64 characters.
 - The same server in two locations is two entries. Nothing is merged.
 
 Fields:
 
-- `transport`: `stdio` for `type` `stdio`. `http` for `type` `http`, `streamable-http`, `sse` or `ws`. With no `type`, `stdio` if there is a `command`, otherwise `http` if there is a `url`.
-- `url`: for `http`, only the scheme, host and port. The path, query, fragment, and any user name and password are dropped, because some services put a key in the path. A URL that cannot be parsed is null.
-- `command`: for `stdio`, the executable name only: the last path segment of the first word of `command`. Never its arguments.
+- A `command` or `url` that is not a string counts as absent.
+- `transport`: `stdio` for `type` `stdio`. `http` for `type` `http`, `streamable-http`, `sse` or `ws`. With no `type`, `stdio` if there is a `command`, otherwise `http` if there is a `url`. A `type` that is not a string is an unknown type. When `type` is given it decides the transport even if the matching field is absent: `type` `stdio` with only a `url` gives `stdio` with `command` and `url` both null.
+- `url`: for `http`, only the scheme, host and port. The path, query, fragment, and any user name and password are dropped, because some services put a key in the path. Scheme and host are written in lower case, and an IPv6 host in brackets. A URL that cannot be parsed, has no scheme or host, or has a port that is not valid is null. For `stdio`, `url` is null.
+- `command`: for `stdio`, the executable name only: the first word of `command` split on whitespace, then the part after its last `/` or `\`. Never its arguments. For `http`, `command` is null.
 - `auth`: null. It is set only by introspection (phase 1).
-- The names of keys in `env` go to `manifest.env_names_seen`. Values are never read into the inventory. `headers`, `envFile`, `inputs` and every other field are ignored.
+- The names of keys in `env` go to `manifest.env_names_seen`, each name once, sorted, together with names from other sources. Values are never read into the inventory. `headers`, `envFile`, `inputs` and every other field are ignored.
 
 Rules:
 
-- Every location checked is listed in `manifest.paths`, found or not, as the resolved path. Each file read is counted in `files_read`.
-- A missing file is not an error.
-- A file that cannot be read or parsed, or whose server section is not an object, is listed in `manifest.unreadable`. Its contents are never echoed, and the run continues.
-- A server entry with neither `command` nor `url`, or with an unknown `type`, is skipped. The terminal names the location key and the entry's position. It never shows the entry's values.
+- Every location checked is listed in `manifest.paths`, found or not, as the resolved path, each path once. The order is: registry exports, then the locations in the order of the table above, then `--config` files in the order given. For `vscode-profile`, the path is each `<profile>/mcp.json`, with profiles in order of folder name; the `profiles` folder itself is listed when it is missing or holds no profile folder. The ID hash for `--config` uses the path as given; the manifest uses the resolved path.
+- `files_read` counts each file opened and read, once, even if it then fails to parse. `~/.claude.json` counts once for `claude-code-user` and `claude-code-local`, and a file reached by both `--defaults` and `--config` counts once.
+- A missing file is not an error, including a file named with `--config`. The terminal reports it as missing.
+- Files are read as strict JSON in UTF-8, with or without a byte order mark, and MUST hold one JSON object; any other file is unreadable. A file with comments or trailing commas is unreadable (section 12). A missing server section means no servers; it is not unreadable.
+- A file that cannot be read or parsed, or whose server section is not an object, is listed in `manifest.unreadable`. In `~/.claude.json` and a `claude-code` file, a `projects` value or a project entry that is not an object counts the same way. Servers from the file's other sections are kept. Contents are never echoed, and the run continues.
+- A server entry that is not an object, has neither `command` nor `url`, or has an unknown `type` is skipped. The terminal names the location key and the entry's position. It never shows the entry's values.
+- Servers are written in the order of the locations above, and in file order within a file. In `~/.claude.json`, top-level servers come first, then each project's in file order.
+- The terminal prints one line per location: the key, the number of servers found or `missing` or `unreadable`, and the path. `claude-code-local` has one line for all projects; `vscode-profile` has one line per profile.
+- `--out` MUST NOT be any path in `manifest.paths` from this source, found or not. If it is, nothing is written.
 - Home and app-data folders are resolved with `pathlib` and the variables `HOME`, `USERPROFILE` and `APPDATA` only. No other environment value is read, and no user name is hard-coded.
 - This source writes MCP servers only. It writes no agents and no findings. `mcp.no_auth` needs introspection (phase 1).
 - `--defaults` and `--config` can be combined with each other and with `--registry` and `--owners`. They write a new inventory, so they cannot be combined with `--inventory`.
@@ -824,6 +834,7 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - Owner overlay: defined in section 7.4 (decision D8). No longer open.
 - Help and errors for registry exports (proposed): `ritvo inspect --help` and the report show the commands that produce each export file, and a refusal that has a remedy says what to do without echoing a field value, for example to re-export so a partial page is whole.
 - The command that drafts an answers file from an inventory, and the sources for the Observe questions in section 8.3.
+- Config files with comments and trailing commas (section 7.1). VS Code documents `mcp.json` as accepting them; the reader accepts strict JSON only, so such a file is listed as unreadable.
 - How an evidence reference to a document is recorded (section 8.1). The cap for `asserted` answers is now defined in section 8.1, scoring rule 4.
 - The migration of `review_version: 0` files: defined in section 8.1. No longer open.
 - Which design partner's platforms set the order of inspector sources after the registry readers.
@@ -855,11 +866,11 @@ Platform rules for contributors:
 
 ## 14. Phases
 
-The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, then 4 and 5. This section maps them to the sections of this spec and records status as of 19 October 2026. "Specified" means this spec defines it. "Built" means the code is on the main branch.
+The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, then 4 and 5. This section maps them to the sections of this spec and records status as of 22 October 2026. "Specified" means this spec defines it. "Built" means the code is on the main branch.
 
 | Phase | Spec sections in force | Built | Specified, not built |
 | --- | --- | --- | --- |
-| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3 inspector; 8, 8.1, 8.2, 8.3 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` (8.1, before the 0.2 changes); intake templates and reader (8.2) | Inventory format; registry exports; config discovery; the scoring contract in 8.1 (`needs_validation`, coverage, `basis`); drafted answers (8.3); the report in 7.2 |
+| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4 inspector; 8, 8.1, 8.2, 8.3 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader (8.2); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1) | Code and environment scan (7); the findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report in 7.2; `ritvo diagnose` beyond `--templates` (6.3) |
 | 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | Nothing | All of it |
 | 2 Decide | 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
 | 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
@@ -880,3 +891,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.4-draft | 19 October 2026 | Owner overlay defined (7.4). `ritvo inspect --owners` added to the CLI table (6.3). `manifest.owner_overlays` added and inventory `schema_version` raised to 1, with version 0 files rejected (4.8). Owner overlay closed in the open items (12). | Decision D8 |
 | 0.5-draft | 19 October 2026 | Scoring contract confirmed (8.1). A `review_version` 0 answers file is accepted: `unknown` is read as `needs_validation`, the file is not rewritten, a message names it, and the result notes it. An area whose answered questions are all `asserted` is capped at `partial`, and the result says why; an answer with no `basis` is `asserted`. Both rules closed in the open items (12). | Decisions on the scoring contract |
 | 0.6-draft | 19 October 2026 | Config discovery defined (7.1): locations checked against client documentation, location keys, server IDs, field rules and `--config` and `--project`. Unverified locations listed as not built. Server URLs keep scheme, host and port only (4.8). CLI rows for `--defaults` and `--config` (6.3). | Decisions on config discovery |
+| 0.7-draft | 22 October 2026 | Config discovery rules the first build relied on, written down (7.1): `--project` and `--config` option rules, unset `APPDATA`, ID suffix after the cut, non-string fields, `type` deciding transport, URL and command parsing, `env_names_seen` order, manifest path order and `files_read` counting, strict JSON, partly unreadable `~/.claude.json`, entries that are not objects, server order, terminal lines, `--out` guard. Comments in config files added to the open items (12). Phase 0 build status brought up to date (14). | Pull request 21 |
