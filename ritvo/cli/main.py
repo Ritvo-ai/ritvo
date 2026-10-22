@@ -1,5 +1,6 @@
 """The `ritvo` command line."""
 
+import os
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -16,6 +17,17 @@ from ritvo.diagnostic.review.scoring import (
     ReviewError,
     load_answers,
     score,
+)
+from ritvo.inspector.config import (
+    CLIENTS,
+    ConfigError,
+    Location,
+    add_servers,
+    config_location,
+    default_locations,
+    parse_config,
+    read_configs,
+    system_name,
 )
 from ritvo.inspector.inventory import InventoryError, load_inventory, write_inventory
 from ritvo.inspector.owners import OverlayError, apply_overlay, read_overlay
@@ -136,6 +148,30 @@ def inspect(
             help="A platform's agent export to read: agentcore or vertex. Repeatable.",
         ),
     ] = None,
+    defaults: Annotated[
+        bool,
+        typer.Option(
+            "--defaults",
+            help="Read the MCP config of each client from its well-known locations (SPEC 7.1).",
+        ),
+    ] = False,
+    config: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--config",
+            metavar="<client>:<file>",
+            help=f"An MCP config file to read: {', '.join(CLIENTS)}. Repeatable.",
+        ),
+    ] = None,
+    project: Annotated[
+        Path | None,
+        typer.Option(
+            "--project",
+            exists=True,
+            file_okay=False,
+            help="The project folder for project config files. Default: the current folder.",
+        ),
+    ] = None,
     owners: Annotated[
         Path | None,
         typer.Option(
@@ -159,14 +195,17 @@ def inspect(
     ] = Path("inventory.json"),
 ) -> None:
     """Write inventory.json from files only. Read-only and local; never calls a platform."""
-    if registry and inventory is not None:
-        _fail("use --registry or --inventory, not both")
+    reads_configs = defaults or bool(config)
+    if (registry or reads_configs) and inventory is not None:
+        _fail("--inventory cannot be combined with --registry, --defaults or --config")
     if inventory is not None and owners is None:
         _fail("--inventory needs --owners")
-    if not registry and inventory is None:
+    if project is not None and not defaults:
+        _fail("--project needs --defaults")
+    if not registry and not reads_configs and inventory is None:
         _fail(
-            "give at least one --registry <platform>:<file>, "
-            "or --inventory <file> with --owners <agents.csv>"
+            "give at least one --registry <platform>:<file>, --defaults or "
+            "--config <client>:<file>, or --inventory <file> with --owners <agents.csv>"
         )
     if inventory is not None and _same_file(inventory, out):
         _fail(f"--out {out} is the file named by --inventory; choose another path")
@@ -174,25 +213,63 @@ def inspect(
         overlay = read_overlay(owners) if owners is not None else None
         if overlay is not None and any(_same_file(path, out) for path in overlay.files_read):
             _fail(f"--out {out} is one of the intake files; choose another path")
+        locations: list[Location] = []
+        unresolved: list[str] = []
+        if defaults:
+            system = system_name()
+            # SPEC 7.1: HOME or USERPROFILE (through pathlib) and APPDATA, and no other variable.
+            appdata = os.environ.get("APPDATA") if system == "windows" else None
+            locations, unresolved = default_locations(
+                system,
+                Path.home(),
+                Path(appdata) if appdata else None,
+                (project or Path.cwd()).resolve(),
+            )
+        named: dict[Path, str] = {}
+        for value in config or []:
+            client, config_file = parse_config(value)
+            resolved = Path(config_file).resolve()
+            if resolved in named:
+                raise ConfigError(f"--config names {config_file} twice")
+            named[resolved] = config_file
+            locations.append(config_location(client, config_file))
+        configs = read_configs(locations) if reads_configs else None
+        if configs is not None and any(_same_file(Path(path), out) for path in configs.paths):
+            _fail(f"--out {out} is one of the config files read; choose another path")
         files: tuple[FileResult, ...] = ()
         warnings: tuple[str, ...] = ()
+        base = None
         if registry:
             run = inspect_registry([parse_source(value) for value in registry], out)
-            result, files, warnings = run.inventory, run.files, run.warnings
+            base, files, warnings = run.inventory, run.files, run.warnings
         elif inventory is not None:
-            result = load_inventory(inventory)
+            base = load_inventory(inventory)
+        if configs is not None:
+            result = add_servers(base, configs)
+            warnings += tuple(configs.warnings)
+        elif base is not None:
+            result = base
         if overlay is not None:
             applied = apply_overlay(result, overlay)
             result = applied.inventory
             warnings += applied.warnings
-    except (RegistryError, OverlayError, InventoryError) as exc:
+    except (RegistryError, ConfigError, OverlayError, InventoryError) as exc:
         _fail(str(exc))
+    for key in unresolved:
+        typer.echo(f"warning: {key}: not checked, APPDATA is not set", err=True)
     for warning in warnings:
         typer.echo(f"warning: {warning}", err=True)
     write_inventory(result, out)
     width = max((len(file.platform) for file in files), default=0)
     for file in files:
         typer.echo(f"{file.platform:<{width}}  {file.agents} agents  {file.path}")
+    if configs is not None:
+        width = max((len(location.key) for location in configs.results), default=0)
+        for location in configs.results:
+            detail = (
+                f"{location.servers} servers" if location.status == "found" else location.status
+            )
+            typer.echo(f"{location.key:<{width}}  {detail}  {location.path}")
     if overlay is not None:
         typer.echo(
             f"owners: {applied.fields_set} fields set, {applied.replaced} replaced a value  "

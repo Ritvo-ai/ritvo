@@ -1,0 +1,7 @@
+{
+  "servers": {
+    "api": { "type": "http", "url": "https://[2001:db8::1]:9000/mcp" },
+    "pigeon": { "type": "carrier-pigeon", "url": "https://fixture-unknown-type-never-copied.example" },
+    "empty": { "description": "fixture-description-never-copied" }
+  }
+}

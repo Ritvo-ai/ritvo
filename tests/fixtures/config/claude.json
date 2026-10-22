@@ -1,0 +1,19 @@
+{
+  "numStartups": 3,
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.example.com/mcp/fixture-path-never-copied",
+      "headers": { "Authorization": "Bearer fixture-header-never-copied" }
+    }
+  },
+  "projects": {
+    "/fixture/project-path-never-copied": {
+      "allowedTools": [],
+      "mcpServers": {
+        "db": { "command": "C:\\tools\\db-server.exe", "args": ["--password", "fixture-arg-never-copied"] }
+      }
+    },
+    "/fixture/other-project-never-copied": { "allowedTools": [] }
+  }
+}
