@@ -32,5 +32,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Spec 0.4-draft: define the owner overlay (`ritvo inspect --owners`), add `manifest.owner_overlays`, bump inventory schema_version to 1.
 - Spec 0.5-draft: confirm the scoring contract rules. A `review_version` 0 answers file is read with `unknown` as `needs_validation`, and an area whose answers are all `asserted` is capped at `partial`.
 - Spec 0.6-draft: define config discovery (`ritvo inspect --defaults`, `--config`, `--project`) for Claude Code, Claude Desktop, Cursor and VS Code, with paths checked against each client's documentation; MCP server URLs keep scheme, host and port only.
+- Spec 0.7-draft: write down the config discovery rules the first build relies on (option rules, unset `APPDATA`, field parsing, manifest order and counts, strict JSON, partly unreadable files, server order, terminal output, the `--out` guard); add comments in config files to the open items; bring the phase 0 build status up to date.
 
 [Unreleased]: https://github.com/Ritvo-ai/ritvo/commits/main
