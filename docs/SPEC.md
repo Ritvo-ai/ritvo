@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.4-draft · 19 October 2026 · Licence: Apache-2.0
+Version 0.6-draft · 19 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -211,7 +211,7 @@ mcp_servers:
   - id: demo-mcp
     source: config
     transport: http             # http | stdio
-    url: https://mcp.example.com/mcp
+    url: https://mcp.example.com
     command: null
     auth:
       protected_resource_metadata: true
@@ -261,7 +261,7 @@ Fields. Every field listed is present; `null` means not known, never a safe defa
 | `mcp_servers[].id` | ID | Unique in the inventory |
 | `mcp_servers[].source` | string | `config` or `middleware` |
 | `mcp_servers[].transport` | string | `http` or `stdio` |
-| `mcp_servers[].url` | string or null | For `http`, without query string or fragment |
+| `mcp_servers[].url` | string or null | For `http`, the scheme, host and port only; never the path, query, fragment, or a user name and password (section 7.1) |
 | `mcp_servers[].command` | string or null | For `stdio`, the executable name only, never its arguments |
 | `mcp_servers[].auth` | object or null | `null` until the server is introspected; then `protected_resource_metadata` (boolean), `authorization_servers` and `scopes_supported` (strings) |
 | `tools[].id` | string | `<server id>/<tool name>` |
@@ -402,6 +402,8 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | `ritvo diagnose --templates <dir>` | Write the blank intake templates |
 | `ritvo inspect` | Local scan; writes `inventory.json` |
 | `ritvo inspect --registry <platform>:<file>` | Read a platform's agent export into `inventory.json` |
+| `ritvo inspect --defaults [--project <dir>]` | Read MCP servers from the well-known client config locations (section 7.1) |
+| `ritvo inspect --config <client>:<file>` | Read MCP servers from one client config file (section 7.1) |
 | `ritvo inspect --owners <agents.csv>` | Merge owners from an intake file into an inventory, with `--registry` or with `--inventory <file>` (section 7.4) |
 | `ritvo import <inventory.json>` | Create a draft change request from an inventory |
 | `ritvo import-doa <matrix.csv>` | Draft bindings and roles from a delegation-of-authority matrix |
@@ -441,22 +443,65 @@ Feeding Ritvo: `ritvo import inventory.json` creates a draft change request cont
 
 Relationship to security scanners: tools such as Cisco's mcp-scanner (Apache-2.0) and Invariant's mcp-scan look for malicious tool descriptions and vulnerabilities, and some send tool descriptions to a remote service. The inspector answers a different question, authority, and runs fully local. A later version MAY ingest their reports as findings.
 
-### 7.1 Default discovery locations
+### 7.1 Config discovery
 
-Operator-named paths always work. `ritvo inspect --defaults` additionally checks the well-known locations below for the current OS. It lists every location it checked in the manifest, found or not. All paths are (verify) against each tool's current documentation before each release, and each has a fixture test.
+`ritvo inspect --defaults` reads the MCP configuration of the clients below from their well-known locations for the current OS. `ritvo inspect --config <client>:<file>` reads one file the operator names, in that client's format. `--config` may be given more than once. Project locations are resolved under `--project <dir>`, which defaults to the current directory. Both write servers to `mcp_servers[]` with `source: config`. They read files only, and never start or contact a server.
 
-| Client | macOS | Linux | Windows |
+Locations read by `--defaults`. These paths were checked against each client's documentation on 19 October 2026. They are checked again before each release, and each has a fixture test on each OS.
+
+| Location key | Client | File | Servers read from |
 | --- | --- | --- | --- |
-| Project `.mcp.json` (Claude Code) | `<repo>/.mcp.json` | same | same |
-| Claude Code user config | `~/.claude.json` | same | `%USERPROFILE%\.claude.json` |
-| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `~/.config/Claude/claude_desktop_config.json` (unofficial builds only) | `%APPDATA%\Claude\claude_desktop_config.json` |
-| Cursor | `~/.cursor/mcp.json`, `<repo>/.cursor/mcp.json` | same | `%USERPROFILE%\.cursor\mcp.json` |
-| VS Code | `~/Library/Application Support/Code/User/mcp.json`, `<repo>/.vscode/mcp.json` | `~/.config/Code/User/mcp.json` | `%APPDATA%\Code\User\mcp.json` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | same | `%USERPROFILE%\.codeium\windsurf\mcp_config.json` |
-| Codex CLI | `~/.codex/config.toml` | same | `%USERPROFILE%\.codex\config.toml` |
-| Gemini CLI | `~/.gemini/settings.json` | same | `%USERPROFILE%\.gemini\settings.json` |
+| `claude-code-project` | Claude Code | `<project>/.mcp.json` | `mcpServers` |
+| `claude-code-user` | Claude Code | `~/.claude.json`; on Windows `%USERPROFILE%\.claude.json` | top-level `mcpServers` |
+| `claude-code-local` | Claude Code | the same file | `projects.<project path>.mcpServers`, for every project listed |
+| `claude-desktop` | Claude Desktop | macOS `~/Library/Application Support/Claude/claude_desktop_config.json`; Windows `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers` |
+| `cursor-user` | Cursor | `~/.cursor/mcp.json`; on Windows `%USERPROFILE%\.cursor\mcp.json` | `mcpServers` |
+| `cursor-project` | Cursor | `<project>/.cursor/mcp.json` | `mcpServers` |
+| `vscode-user` | VS Code | `<User>/mcp.json` | `servers` |
+| `vscode-profile` | VS Code | `<User>/profiles/<profile id>/mcp.json`, for every profile | `servers` |
+| `vscode-workspace` | VS Code | `<project>/.vscode/mcp.json` | `servers` |
 
-Rules: resolve home and app-data directories through the standard library (`pathlib`, `os.environ`) and never hard-code a user name. Each reader parses its format (JSON or TOML) in memory and keeps only server name, transport, command or URL, and the names of any environment keys. A missing file is not an error. A file the inspector cannot parse is listed in the manifest as unreadable; its contents are not echoed.
+`<User>` is the VS Code user folder: macOS `~/Library/Application Support/Code/User`, Linux `~/.config/Code/User`, Windows `%APPDATA%\Code\User`. VS Code also reads `<project>/.mcp.json`. That file is read once, as `claude-code-project`.
+
+Not built yet (verify). Each is checked against the client's documentation before it is built:
+
+| Client or location | Why not yet |
+| --- | --- |
+| Claude Desktop on Linux | Claude Desktop is offered for Linux, but no config path is documented |
+| `~/.copilot/mcp-config.json` (or `$COPILOT_HOME/mcp-config.json`) | Described in VS Code's documentation; to be checked against the Copilot CLI documentation |
+| VS Code `settings.json` key `mcp` | An older layout; the current reference does not mention it |
+| Windsurf `~/.codeium/windsurf/mcp_config.json` | Not checked yet |
+| Codex CLI `~/.codex/config.toml` | Not checked yet |
+| Gemini CLI `~/.gemini/settings.json` | Not checked yet |
+
+`--config` clients: `claude-code`, `claude-desktop`, `cursor` and `vscode`. A `claude-code` file is read like `~/.claude.json`: top-level `mcpServers`, and `projects.<path>.mcpServers` if present.
+
+Server IDs:
+
+- An ID is the location key, a dot and the normalised server name, for example `cursor-user.github`.
+- Where one location holds several files or scopes, the key adds `-` and the first 8 hex characters of a SHA-256. That is the hash of the project path for `claude-code-local`, of the profile folder name for `vscode-profile`, and of the file path as given for `--config`. Project paths and file paths are never written to the inventory.
+- `--config` keys are `<client>-config`, for example `cursor-config-1a2b3c4d.github`.
+- The name is normalised to lower case. Any character outside `a-z`, `0-9`, `.`, `_` and `-` becomes `-`. Leading characters that are not a letter or digit are removed. An empty result becomes `server`. The ID is cut to 64 characters.
+- If two servers in one location normalise to the same ID, the later ones get `-2`, `-3` and so on, in file order.
+- The same server in two locations is two entries. Nothing is merged.
+
+Fields:
+
+- `transport`: `stdio` for `type` `stdio`. `http` for `type` `http`, `streamable-http`, `sse` or `ws`. With no `type`, `stdio` if there is a `command`, otherwise `http` if there is a `url`.
+- `url`: for `http`, only the scheme, host and port. The path, query, fragment, and any user name and password are dropped, because some services put a key in the path. A URL that cannot be parsed is null.
+- `command`: for `stdio`, the executable name only: the last path segment of the first word of `command`. Never its arguments.
+- `auth`: null. It is set only by introspection (phase 1).
+- The names of keys in `env` go to `manifest.env_names_seen`. Values are never read into the inventory. `headers`, `envFile`, `inputs` and every other field are ignored.
+
+Rules:
+
+- Every location checked is listed in `manifest.paths`, found or not, as the resolved path. Each file read is counted in `files_read`.
+- A missing file is not an error.
+- A file that cannot be read or parsed, or whose server section is not an object, is listed in `manifest.unreadable`. Its contents are never echoed, and the run continues.
+- A server entry with neither `command` nor `url`, or with an unknown `type`, is skipped. The terminal names the location key and the entry's position. It never shows the entry's values.
+- Home and app-data folders are resolved with `pathlib` and the variables `HOME`, `USERPROFILE` and `APPDATA` only. No other environment value is read, and no user name is hard-coded.
+- This source writes MCP servers only. It writes no agents and no findings. `mcp.no_auth` needs introspection (phase 1).
+- `--defaults` and `--config` can be combined with each other and with `--registry` and `--owners`. They write a new inventory, so they cannot be combined with `--inventory`.
 
 ### 7.2 Report
 
@@ -834,3 +879,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.3-draft | 19 October 2026 | Phases mapped to spec sections with build status (14). | Phase definitions in PRD section 7, 19 October 2026. |
 | 0.4-draft | 19 October 2026 | Owner overlay defined (7.4). `ritvo inspect --owners` added to the CLI table (6.3). `manifest.owner_overlays` added and inventory `schema_version` raised to 1, with version 0 files rejected (4.8). Owner overlay closed in the open items (12). | Decision D8 |
 | 0.5-draft | 19 October 2026 | Scoring contract confirmed (8.1). A `review_version` 0 answers file is accepted: `unknown` is read as `needs_validation`, the file is not rewritten, a message names it, and the result notes it. An area whose answered questions are all `asserted` is capped at `partial`, and the result says why; an answer with no `basis` is `asserted`. Both rules closed in the open items (12). | Decisions on the scoring contract |
+| 0.6-draft | 19 October 2026 | Config discovery defined (7.1): locations checked against client documentation, location keys, server IDs, field rules and `--config` and `--project`. Unverified locations listed as not built. Server URLs keep scheme, host and port only (4.8). CLI rows for `--defaults` and `--config` (6.3). | Decisions on config discovery |
