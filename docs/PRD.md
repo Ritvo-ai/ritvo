@@ -1,6 +1,6 @@
 # Ritvo — Product Requirements (PRD)
 
-Status: draft v0.5 · 22 October 2026 · Owner: SK · Licence: Apache-2.0
+Status: draft v0.6 · 23 October 2026 · Owner: SK · Licence: Apache-2.0
 
 ## 1. Summary
 
@@ -120,11 +120,11 @@ Not a metric: GitHub stars. They measure attention, not use.
 
 ## 7. Phases
 
-Phases are cumulative. P0 (the MVP) is phases 0 to 3. Each phase has one purpose, a list of what it delivers, and an exit that can be checked. SPEC section 14 maps each phase to the spec sections in force. Status is as of 22 October 2026.
+Phases are cumulative. P0 (the MVP) is phases 0 to 3. Each phase has one purpose, a list of what it delivers, and an exit that can be checked. SPEC section 14 maps each phase to the spec sections in force. Status is as of 23 October 2026.
 
 | Phase | Purpose | Delivers | Exit |
 | --- | --- | --- | --- |
-| 0 | **See.** Make authority visible before anything is installed | In build order: the gap review and intake templates with their reader (built); inventory format and registry exports, inventory models, agentcore and vertex readers, `ritvo inspect --registry` (built); owner overlay (built); the scoring contract with `needs_validation`, evidence coverage and answer provenance (built); config readers, `ritvo inspect --defaults` and `--config` (built); the intake reader called by `ritvo diagnose`, with suggested fixes; drafted answers from an inventory; additive re-run; an interview assistant limited in code; DoA import; questionnaire init; the HTML inspect report | A first graded review from an inventory in one sitting, with no answer typed that a file could supply; an unknown is not scored as a gap; the inventory feeds a draft `ritvo.yaml`; gap review and diagnostic run on files |
+| 0 | **See.** Make authority visible before anything is installed | In build order: the gap review and intake templates with their reader (built); inventory format and registry exports, inventory models, agentcore and vertex readers, `ritvo inspect --registry` (built); owner overlay (built); the scoring contract with `needs_validation`, evidence coverage and answer provenance (built); config readers, `ritvo inspect --defaults` and `--config` (built); the intake reader called by `ritvo diagnose`, with suggested fixes (built); drafted answers from an inventory; additive re-run; an interview assistant limited in code; DoA import; questionnaire init; the HTML inspect report | A first graded review from an inventory in one sitting, with no answer typed that a file could supply; an unknown is not scored as a gap; the inventory feeds a draft `ritvo.yaml`; gap review and diagnostic run on files |
 | 1 | **Observe.** Put Ritvo beside a real MCP server without changing any outcome | Contract v0.2, identity, ledger, routing, mock, middleware in observe mode, demo MCP server, CLI, MCP introspection (with consent), `ritvo import`, inventory diff, `--pdf` and `--redact`; observe-mode records that show the decision enforce would have made, which supply the Observe answers in section 8.3 of the SPEC | `ritvo demo` runs; tests green; at least one answer is drafted from observe-mode records |
 | 2 | **Decide.** Resolve an ask with the right people, once | Grants, ladders, separation of duties, approvals page, scenario suite, middleware self-report; the interview assistant runs as a governed agent | Suite green; tag v0.1 |
 | 3 | **Govern.** Change the rules with the right sign-off, and reduce how often a person is asked | Precedent, multi-team policy governance, authority diff, metrics; observe-derived policy proposals and pre-ask resolution against standing rules (both proposed) | Ask end to end with an approval and cool-off; a proposal drafted from observed traffic is disposed of by a person in a batch; no machine draft approves |
@@ -135,9 +135,9 @@ Status of phase 0:
 
 | State | Items |
 | --- | --- |
-| Built | `ritvo review` with the scoring contract; intake templates and their reader (the reader is not yet called by `ritvo diagnose`); inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; repository hygiene and CI |
+| Built | `ritvo review` with the scoring contract; intake templates and their reader, called by `ritvo diagnose <dir>` with suggested fixes and `--fix`; inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; repository hygiene and CI |
 | Specified, not built | Drafted answers; assisted drafting rules; code and environment scan; the HTML inspect report |
-| Not started | Additive re-run; interview assistant; DoA import; questionnaire init; `ritvo diagnose` beyond templates |
+| Not started | Additive re-run; interview assistant; DoA import; questionnaire init; the draft `ritvo.yaml` and gap report from `ritvo diagnose` |
 
 Where a person is still asked, by phase:
 
@@ -185,3 +185,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | draft v0.3 | 19 October 2026 | Owner overlay specified (R-INS-9, SPEC 7.4) and moved to "Specified, not built" in the phase 0 status (section 7). |
 | draft v0.4 | 22 October 2026 | Phase 0 status brought up to date (section 7): inventory format, registry exports, owner overlay, scoring contract and config discovery moved to built; code and environment scan and the HTML inspect report listed as specified, not built; export help noted as shown ahead of agreement. Status line corrected to the current version. |
 | draft v0.5 | 22 October 2026 | Help text and remedy hints for export errors agreed (SPEC 7.3) and moved to built in the phase 0 status (section 7). |
+| draft v0.6 | 23 October 2026 | The intake reader called by `ritvo diagnose <dir>`, with suggested fixes and `--fix` (SPEC 8.2), moved to built in the phase 0 status (section 7). |

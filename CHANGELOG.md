@@ -36,5 +36,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Spec 0.7-draft: write down the config discovery rules the first build relies on (option rules, unset `APPDATA`, field parsing, manifest order and counts, strict JSON, partly unreadable files, server order, terminal output, the `--out` guard); add comments in config files to the open items; bring the phase 0 build status up to date.
 - PRD draft v0.4: bring the phase 0 status up to date with what is built.
 - Spec 0.8-draft: agree and define the help text and remedy hints for registry exports (section 7.3); `ritvo inspect` no longer described as needing `--registry`. PRD draft v0.5: export help moved to built.
+- Spec 0.9-draft: define `ritvo diagnose <dir>` (section 8.2): the intake check and summary, suggested fixes and the corrected copy written by `--fix`. PRD draft v0.6: the intake wiring moved to built.
 
 [Unreleased]: https://github.com/Ritvo-ai/ritvo/commits/main

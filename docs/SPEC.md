@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.8-draft · 22 October 2026 · Licence: Apache-2.0
+Version 0.9-draft · 23 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -400,6 +400,7 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | `ritvo review <answers.yaml>` | One-page authority gap result |
 | `ritvo diagnose` | Draft `ritvo.yaml`, authority matrix, gap report from files |
 | `ritvo diagnose --templates <dir>` | Write the blank intake templates |
+| `ritvo diagnose <dir> [--fix]` | Check filled-in intake files, suggest fixes, and with `--fix` write a corrected copy (section 8.2) |
 | `ritvo inspect` | Local scan; writes `inventory.json` |
 | `ritvo inspect --registry <platform>:<file>` | Read a platform's agent export into `inventory.json` |
 | `ritvo inspect --defaults [--project <dir>]` | Read MCP servers from the well-known client config locations (section 7.1) |
@@ -766,8 +767,31 @@ File format, for all three files:
 Validation:
 
 - `owner` and `deputy` MUST name a person in `people.csv`, and `tools` MUST name tools in `tools.csv`, when that file is given. Any of the three files may be absent; references into an absent file are not checked.
-- An error gives the file name, line and column, and nothing is written. An error MUST NOT echo a cell's content, except an ID or a fixed value, shortened to 40 characters.
+- An error gives the file name, line and column, and nothing is written, except the corrected copy that `--fix` writes (below). An error MUST NOT echo a cell's content, except an ID or a fixed value, shortened to 40 characters.
 - The `credential` column is compared across agents to find shared keys (section 8). Its value is never written to a report or to the draft `ritvo.yaml`.
+
+Checking intake files with `ritvo diagnose <dir>`:
+
+- `ritvo diagnose` takes either an intake folder or `--templates <dir>`, not both and not neither. `--fix` needs an intake folder. At least one of the three files MUST be in the folder; otherwise the error says how to write blank ones.
+- The files are read with the rules above. When they are valid, the terminal prints one line per file: for `agents.csv` the number of agents and how many have no owner; for `tools.csv` the number of tools and how many have no tier (empty or `unknown`); for `people.csv` the number of people. A file that is absent is shown as not given, and for `tools.csv` and `people.csv` the line says which references were not checked. Nothing is written, and the exit status is 0. Until the draft `ritvo.yaml`, the authority matrix and the gap report are built, the terminal says they are not built yet.
+- When they are not valid, every problem is printed on its own line, nothing is written, and the exit status is non-zero. If any problem has a mechanical fix, the terminal says how many do and that `--fix` writes a corrected copy.
+
+Suggested fixes. Each problem may carry a mechanical fix, which `--fix` applies, or a hint, which is never applied:
+
+- Column name: a name that is not valid is trimmed, put in lower case, and each run of spaces and hyphens becomes `_`. If the result is a valid column that is not already in the header, it is the fix, and the rows are checked under the fixed header in the same run. Otherwise the hint names the closest valid column. When a header problem has no fix, that file's rows are not checked in this run.
+- ID: in every ID column, and for each item of a list of IDs, each run of whitespace becomes `_` and the value is put in lower case. If the result is a valid ID, it is the fix. A value containing `@` has no fix. In `person_id`, `owner` and `deputy`, a value containing whitespace or `@` has no fix either: the error says to use a `person_id`, not a full name or an email address. A name or an email address is never turned into an ID.
+- Fixed value: the hint names the closest of the column's values, including `unknown`.
+- Reference: for an `owner` or `deputy` not in `people.csv` the hint names the closest `person_id`; for a tool not in `tools.csv`, the closest `tool_id`.
+- The closest candidate is the one most similar to the value, with a similarity ratio of at least 0.6 as computed by Python's `difflib.SequenceMatcher`. If none reaches it, there is no hint.
+- A fix or a hint is an ID, a column name or a fixed value, shortened to 40 characters. It never carries other cell content.
+
+The corrected copy (`ritvo diagnose <dir> --fix`):
+
+- If the files are valid, the terminal prints the summary and that there is nothing to fix, and nothing is written. If no problem has a mechanical fix, the problems are printed, nothing is written, and the exit status is non-zero.
+- Otherwise the copy is written to `<dir>/corrected/`, one file for each intake file in `<dir>`, under the same name. If `<dir>/corrected` already exists, nothing is written and the exit status is non-zero. The files in `<dir>` are never changed.
+- Only fixed cells and fixed column names change. The rest is written back as CSV: UTF-8 without a byte order mark, CRLF line endings, fields quoted only where needed (RFC 4180). Blank rows are kept. A fixed row shorter than the header is padded with empty cells. A row with more cells than the header is written back unchanged. A file that cannot be read into rows (not UTF-8, not valid CSV, no header row, or a header problem with no fix) is copied byte for byte.
+- The copy is then checked with the same rules. If problems remain, they are printed and the exit status is non-zero. Otherwise the summary of the copy is printed and the exit status is 0. Hints are left for a person to apply.
+- The copy is client data, like the files it was made from.
 
 ### 8.3 Drafted answers
 
@@ -875,11 +899,11 @@ Platform rules for contributors:
 
 ## 14. Phases
 
-The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, then 4 and 5. This section maps them to the sections of this spec and records status as of 22 October 2026. "Specified" means this spec defines it. "Built" means the code is on the main branch.
+The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, then 4 and 5. This section maps them to the sections of this spec and records status as of 23 October 2026. "Specified" means this spec defines it. "Built" means the code is on the main branch.
 
 | Phase | Spec sections in force | Built | Specified, not built |
 | --- | --- | --- | --- |
-| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4 inspector; 8, 8.1, 8.2, 8.3 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader (8.2); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1) | Code and environment scan (7); the findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report in 7.2; `ritvo diagnose` beyond `--templates` (6.3) |
+| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4 inspector; 8, 8.1, 8.2, 8.3 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1) | Code and environment scan (7); the findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report in 7.2; the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (6.3) |
 | 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | Nothing | All of it |
 | 2 Decide | 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
 | 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
@@ -902,3 +926,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.6-draft | 19 October 2026 | Config discovery defined (7.1): locations checked against client documentation, location keys, server IDs, field rules and `--config` and `--project`. Unverified locations listed as not built. Server URLs keep scheme, host and port only (4.8). CLI rows for `--defaults` and `--config` (6.3). | Decisions on config discovery |
 | 0.7-draft | 22 October 2026 | Config discovery rules the first build relied on, written down (7.1): `--project` and `--config` option rules, unset `APPDATA`, ID suffix after the cut, non-string fields, `type` deciding transport, URL and command parsing, `env_names_seen` order, manifest path order and `files_read` counting, strict JSON, partly unreadable `~/.claude.json`, entries that are not objects, server order, terminal lines, `--out` guard. Comments in config files added to the open items (12). Phase 0 build status brought up to date (14). | Pull request 21 |
 | 0.8-draft | 22 October 2026 | Help and remedies for registry exports agreed and defined (7.3), as built with the registry readers; closed in the open items (12). The rule that `ritvo inspect` needs a `--registry` updated for config discovery and the owner overlay (7.3). | Maintainer approval of the export help proposal |
+| 0.9-draft | 23 October 2026 | `ritvo diagnose <dir>` defined (8.2): the intake check and summary, suggested fixes (mechanical fixes and hints), and the corrected copy written by `--fix` to `<dir>/corrected/`. CLI row added (6.3). Phase 0 build status updated (14). | Decisions on the intake wiring: mechanical fixes only, never a name or email turned into an ID, spaces become `_`, copy in `corrected/`, validate and summarise until the draft exists |
