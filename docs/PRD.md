@@ -1,6 +1,6 @@
 # Ritvo — Product Requirements (PRD)
 
-Status: draft v0.7 · 23 October 2026 · Owner: SK · Licence: Apache-2.0
+Status: draft v0.8 · 23 October 2026 · Owner: SK · Licence: Apache-2.0
 
 ## 1. Summary
 
@@ -135,8 +135,8 @@ Status of phase 0:
 
 | State | Items |
 | --- | --- |
-| Built | `ritvo review` with the scoring contract; intake templates and their reader, called by `ritvo diagnose <dir>` with suggested fixes and `--fix`; inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; repository hygiene and CI |
-| Specified, not built | Drafted answers; assisted drafting rules; code and environment scan; the HTML inspect report; DoA import from the client's own matrix (SPEC 8.4) |
+| Built | `ritvo review` with the scoring contract; intake templates and their reader, called by `ritvo diagnose <dir>` with suggested fixes and `--fix`; inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; DoA import from the client's own matrix (`ritvo import-doa`); repository hygiene and CI |
+| Specified, not built | Drafted answers; assisted drafting rules; code and environment scan; the HTML inspect report |
 | Not started | Additive re-run; interview assistant; questionnaire init; the draft `ritvo.yaml` and gap report from `ritvo diagnose` |
 
 Where a person is still asked, by phase:
@@ -187,3 +187,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | draft v0.5 | 22 October 2026 | Help text and remedy hints for export errors agreed (SPEC 7.3) and moved to built in the phase 0 status (section 7). |
 | draft v0.6 | 23 October 2026 | The intake reader called by `ritvo diagnose <dir>`, with suggested fixes and `--fix` (SPEC 8.2), moved to built in the phase 0 status (section 7). |
 | draft v0.7 | 23 October 2026 | DoA import specified (SPEC 8.4) and moved to "Specified, not built" in the phase 0 status (section 7): the client exports its own matrix as CSV; no Ritvo template to fill in. |
+| draft v0.8 | 23 October 2026 | DoA import moved to built in the phase 0 status (section 7). |

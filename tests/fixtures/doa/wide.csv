@@ -1,0 +1,7 @@
+Fictional Freight Ltd - Delegation of Authority (fictional data)
+Version 3
+
+Decision,Ref,Manager,Director,CFO,CEO,Notes
+Supplier payment,F-01,"10,000","100,000","1,000,000",Unlimited,
+Customer refund,S-04,500,"5,000",,,fixture-note-never-copied
+New supplier contract,L-02,—,R,A,A,
