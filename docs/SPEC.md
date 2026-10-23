@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.12-draft · 23 October 2026 · Licence: Apache-2.0
+Version 0.13-draft · 23 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -194,7 +194,7 @@ Fields: `event_id`, `timestamp`, `principal` (subject, actor, chain, mode), `bou
 `inventory.json` is what the inspector writes and what `ritvo import`, `ritvo diagnose` and the inspect report read. It is one UTF-8 JSON object. An inventory made for a real organisation is client data and MUST NOT be committed to a public repository.
 
 ```yaml
-schema_version: 1
+schema_version: 2
 generated_at: 2026-10-13T09:30:00Z
 tool: ritvo-inspect 0.1.0
 manifest:                       # exactly what was read
@@ -230,11 +230,27 @@ mcp_servers:
       scopes_supported: [ orders:read, orders:write ]
 tools:
   - id: demo-mcp/place_order
+    source: mcp                 # mcp | code
     server: demo-mcp
+    sdk: null
+    platform_ref: null
+    calls: []
     description_hash: sha256:55aa...
     input_schema_hash: sha256:c01e...
     annotations: { readOnly: false, destructive: true, idempotent: false, openWorld: false }
     proposed_tier: high         # proposal only
+    reached_by: []
+  - id: code.acme.execution.orders/kiteconnect
+    source: code                # found by the code scan (section 7.5)
+    server: null
+    sdk: kiteconnect
+    platform_ref: execution/orders.py
+    calls: [ place_order ]
+    description_hash: null
+    input_schema_hash: null
+    annotations: { readOnly: null, destructive: null, idempotent: null, openWorld: null }
+    proposed_tier: high
+    reached_by: [ code.acme.pipeline ]
 identity:
   issuers: [ https://idp.example.com ]
 findings:
@@ -250,7 +266,7 @@ Fields. Every field listed is present; `null` means not known, never a safe defa
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schema_version` | integer | `1` |
+| `schema_version` | integer | `2` |
 | `generated_at` | string | RFC 3339 time in UTC, ending `Z` |
 | `tool` | string | `ritvo-inspect` and the package version |
 | `manifest.paths` | strings | Every path the operator named or the inspector checked, found or not |
@@ -275,17 +291,22 @@ Fields. Every field listed is present; `null` means not known, never a safe defa
 | `mcp_servers[].url` | string or null | For `http`, the scheme, host and port only; never the path, query, fragment, or a user name and password (section 7.1) |
 | `mcp_servers[].command` | string or null | For `stdio`, the executable name only, never its arguments |
 | `mcp_servers[].auth` | object or null | `null` until the server is introspected; then `protected_resource_metadata` (boolean), `authorization_servers` and `scopes_supported` (strings) |
-| `tools[].id` | string | `<server id>/<tool name>` |
-| `tools[].server` | ID | The `mcp_servers[].id` it belongs to |
-| `tools[].description_hash`, `tools[].input_schema_hash` | string | `sha256:` and the hex digest of the canonical JSON; never the text |
+| `tools[].id` | string | `<server id>/<tool name>` for an MCP tool; `<file ID>/<sdk>` for a code tool (section 7.5) |
+| `tools[].source` | string | `mcp` (from introspection or the middleware) or `code` (from the code scan) |
+| `tools[].server` | ID or null | The `mcp_servers[].id` it belongs to; null for a code tool |
+| `tools[].sdk` | string or null | For a code tool, the SDK it calls, from the catalogue in section 7.5; null for an MCP tool |
+| `tools[].platform_ref` | string or null | For a code tool, the file's path inside the scanned folder; null for an MCP tool |
+| `tools[].calls` | strings | For a code tool, the catalogue calls the file makes, sorted; empty for an MCP tool |
+| `tools[].description_hash`, `tools[].input_schema_hash` | string or null | `sha256:` and the hex digest of the canonical JSON; never the text. Required for an MCP tool, null for a code tool |
 | `tools[].annotations` | object | `readOnly`, `destructive`, `idempotent`, `openWorld`: each boolean or null |
 | `tools[].proposed_tier` | string or null | `low`, `medium` or `high`; a proposal only |
+| `tools[].reached_by` | IDs | The agents known to reach the tool; empty when none is known |
 | `identity.issuers` | strings | Token issuers seen |
 | `findings[].rule` | string | One of the finding rules in section 7 |
 | `findings[].subject` | string | What the finding is about: an agent, server or tool ID, or a credential or environment variable name |
 | `findings[].agents` | IDs | The agents involved, possibly none |
 
-A reader MUST reject a file with another `schema_version`, a missing field or an unknown field, and name the field. A file with `schema_version` 0 was written before `manifest.owner_overlays` existed. It is rejected with a message to run the inspector again. An inventory MUST NOT contain secret values, raw config text, tokens, prompts, tool descriptions or environment variable values.
+A reader MUST reject a file with another `schema_version`, a missing field or an unknown field, and name the field. A file with `schema_version` 0 was written before `manifest.owner_overlays` existed, and one with `schema_version` 1 before tools found in code (`tools[].source`) existed. Each is rejected with a message to run the inspector again. An MCP tool MUST have `server` and both hashes and no `sdk`, `platform_ref` or `calls`; a code tool MUST have no `server` and MUST have `sdk`, `platform_ref` and at least one call. An inventory MUST NOT contain secret values, raw config text, tokens, prompts, tool descriptions or environment variable values.
 
 ## 5. Behaviour
 
@@ -449,8 +470,8 @@ Rules:
 - The manifest in the output lists every path read and every server contacted.
 - Never read environment values or print secrets. Config files are parsed in memory; values matching secret patterns are dropped before anything is written.
 - Spawning a stdio MCP server runs the command in the config file. The inspector MUST NOT do so unless the operator passes `--connect` and confirms each server; it SHOULD suggest running in a sandbox.
-- Tier proposals come from MCP annotations: destructive → `high`, read-only → `low`, otherwise `medium`. They are proposals, never decisions.
-- Findings are inventory facts, not security verdicts. Rules in v0: `agent.no_owner`, `mcp.no_auth`, `tool.destructive_unowned`, `identity.shared_key_name`. `agent.no_owner` is an agent whose `owner` is null. `identity.shared_key_name` is a credential or key name used by two or more agents. The other two are defined with the sources that produce them.
+- Tier proposals come from MCP annotations: destructive → `high`, read-only → `low`, otherwise `medium`. For a code tool they come from the catalogue in section 7.5. They are proposals, never decisions.
+- Findings are inventory facts, not security verdicts. Rules in v0: `agent.no_owner`, `mcp.no_auth`, `tool.destructive_unowned`, `identity.shared_key_name`. `agent.no_owner` is an agent whose `owner` is null. `identity.shared_key_name` is a credential or key name used by two or more agents. `tool.destructive_unowned` is a tool with proposed tier `high` that is reached by no known agent, or by at least one agent whose `owner` is null; `subject` is the tool and `agents` the reaching agents with no owner. `mcp.no_auth` is defined with introspection (phase 1).
 
 Feeding Ritvo: `ritvo import inventory.json` creates a draft change request containing new agents (owner unassigned blocks approval), tools with proposed tiers, and no bindings. It goes through the normal sign-off flow and the authority diff. It never edits `ritvo.yaml` directly. `ritvo diagnose` runs the gap rules over the draft. Re-running the inspector and importing again produces a diff of what changed.
 
@@ -630,13 +651,13 @@ Merging:
 - Each field the overlay changes adds one entry to `manifest.owner_overlays` (section 4.8): `agent`, `field`, `previous` and `source_row`. A value equal to the one already there changes nothing and is not recorded.
 - Each intake file read is listed in `manifest.paths` and counted in `manifest.files_read`.
 - With `--inventory`, the result keeps the input's agents, MCP servers, tools, identity and manifest, adds the overlay's entries, and gets a new `generated_at` and `tool`.
-- `agent.no_owner` findings are worked out again from the merged agents. Other findings are kept as they were.
+- `agent.no_owner` and `tool.destructive_unowned` findings are worked out again from the merged agents. Other findings are kept as they were.
 
 The terminal prints the number of fields set, how many of them replaced a non-null value, each warning, and the path written. Exit status: 0 when the inventory is written, non-zero otherwise.
 
 ### 7.5 Code and environment scan
 
-`ritvo inspect --code <dir>` reads Python source in a folder the operator names and writes the agents it finds to `agents[]` with `source: code`, and the names of environment variables to `manifest.env_names_seen`. Source is parsed with Python's `ast` module. It is never imported or run, and no environment value is read. `--code` may be given more than once; naming the same folder twice is refused. It combines with every other source and with `--owners`, and not with `--inventory`.
+`ritvo inspect --code <dir>` reads Python source in a folder the operator names and writes the agents it finds to `agents[]` with `source: code`, the actions it finds to `tools[]` with `source: code`, and the names of environment variables to `manifest.env_names_seen`. Source is parsed with Python's `ast` module. It is never imported or run, and no environment value is read. `--code` may be given more than once; naming the same folder twice is refused. It combines with every other source and with `--owners`, and not with `--inventory`.
 
 What is read:
 
@@ -646,12 +667,20 @@ What is read:
 
 Agents:
 
-- Each Python file that imports an agent framework or a model SDK is one agent. Imports are read from `import` and `from ... import` statements anywhere in the file; relative imports are ignored.
+- Each Python file that imports an agent framework or a model SDK is one agent. So is a file that imports an HTTP client (`httpx`, `requests` or `aiohttp`) and holds a string naming a model API host: `api.perplexity.ai`, `api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com`, `api.mistral.ai`, `api.groq.com`, `api.deepseek.com` or `api.cohere.com`. A host read from a variable at run time is not seen, and a file that only imports such a file is not an agent.
+- Imports are read from `import` and `from ... import` statements anywhere in the file, including inside functions. A relative import is resolved against the file's own package.
 - Frameworks, by module, in the order one is chosen when a file imports several: `langgraph` (langgraph), `crewai` (crewai), `autogen` and `autogen_agentchat` (autogen), `llama_index` (llama-index), `pydantic_ai` (pydantic-ai), `semantic_kernel` (semantic-kernel), `smolagents` (smolagents), `google.adk` (google-adk), `strands` (strands), `langchain` and `langchain_core` (langchain), `mcp` and `fastmcp` (mcp).
 - Model SDKs: `anthropic`, `openai`, `google.genai`, `google.generativeai`, `mistralai`, `cohere` and `groq`. A file that imports only an SDK is an agent with `framework` null.
 - `id` is `code.`, the folder's name, and the file's path inside it without `.py`, joined by `.`, in lower case, with any character outside `a-z`, `0-9`, `.`, `_` and `-` replaced by `-`: `agents/research.py` in `app` gives `code.app.agents.research`. An ID longer than 64 characters is cut to 55 and given `-` and the first 8 hex characters of the SHA-256 of the relative path. A clash gets `-2`, `-3` and so on, in scan order.
 - `platform_ref` is the file's path inside the folder, with `/` as separator. `name`, `platform`, `owner` and `owner_team` are null.
 - `credential` is the first variable name the file reads that ends in `_API_KEY`, `_KEY`, `_TOKEN`, `_SECRET`, `_PASSWORD` or `_CREDENTIALS`, or null. An SDK that reads its key without the file naming it leaves `credential` null: unknown, not absent.
+
+Tools found in code:
+
+- A file makes a catalogue call when it calls one of the SDK's methods below and the SDK is imported by the file itself or by a project file it imports directly. A call is matched on the names along the call target, through attributes and calls: `self.kite.place_order(...)` and `smtplib.SMTP(host).send_message(...)` both match.
+- Catalogue, with the proposed tier. `kiteconnect` (`high`): `place_order`, `modify_order`, `cancel_order`, `exit_order`, `place_gtt`, `modify_gtt`, `delete_gtt`. `stripe` (`high`): `create`, `confirm` or `capture` after one of `PaymentIntent`, `Charge`, `Refund`, `Transfer`, `Payout`, `payment_intents`, `charges`, `refunds`, `transfers`, `payouts`. `smtplib` (`medium`): `send_message`, `sendmail`. `slack_sdk` (`medium`): `chat_postMessage`. `twilio` (`medium`): `create` after `messages`.
+- Each file and SDK with at least one catalogue call is one tool. `id` is the file's ID, built as for agents, a `/` and the SDK; `calls` lists the matched calls, written `method` or `Object.method`. Hashes are null and annotations all null.
+- Reach: the project files a file imports, as above, are followed transitively. `reached_by` lists, sorted, every agent whose file is the tool's file or leads to it. Only static imports are seen.
 
 Environment variable names:
 
@@ -661,9 +690,9 @@ Environment variable names:
 Rules:
 
 - The manifest lists each folder in `paths` as the resolved path and counts each file read in `files_read`.
-- Findings are worked out again over every agent in the inventory: `agent.no_owner`, and `identity.shared_key_name` for a credential name two or more agents read.
+- Findings are worked out again over every agent and tool in the inventory: `agent.no_owner`, `identity.shared_key_name` for a credential name two or more agents read, and `tool.destructive_unowned` (section 7).
 - `--out` MUST NOT be inside a `--code` folder. That is refused, and nothing is written.
-- The terminal prints, for each folder, the number of Python files read and agents found, then the findings by rule.
+- The terminal prints, for each folder, the number of Python files read and the agents and tools found, then the findings by rule.
 - Python only in this version. Other languages are an open item (section 12).
 
 ## 8. Diagnostic
@@ -1059,3 +1088,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.10-draft | 23 October 2026 | Delegation-of-authority import defined (8.4): the client's own matrix exported as CSV, wide and long layouts read into one record shape, cell reading, bands and ladders, role IDs, links from decisions to tools, interactive confirmation saved to a mapping file, `--no-input`, and the draft file. Approval bands per tool added to `ritvo.yaml` (4.1). CLI row updated (6.3). ERP approval exports and roles with several holders added to the open items (12). | Decisions on the DoA input: the client's own matrix, CSV export only, interactive confirmation, approval bands per tool |
 | 0.11-draft | 23 October 2026 | DoA import rules the first build relies on, written down (8.4): how the delimiter, header row, layout, decision and level columns, number format, currency and codes are proposed; zero and dashes as no authority; the conflict rule against unlimited and empty cells; role ID edges; tool proposals and the `tools.csv` check; refused intake and mapping files; re-asking an invalid answer; file names; mapping file contents; the draft's `decision` field and decisions with no authority; terminal output. Build status updated (14). | Pull request for the DoA import |
 | 0.12-draft | 23 October 2026 | Code and environment scan defined (7.5): one agent per Python file that imports a framework or model SDK, IDs from the path, skipped folders and files, `.env` never opened, example env files read for names, credential and env-name rules, unreadable files, the `--out` guard. CLI row added (6.3); `--owners` and the combination rules updated for the new source (7.1, 7.3, 7.4). Other languages added to the open items (12). Build status updated (14). | Decisions on the code scan: one agent per file, names from code and example env files only, tests skipped, Python only |
+| 0.13-draft | 23 October 2026 | Tools found in code (7.5): a catalogue of action SDKs with proposed tiers, matched on call targets, with the SDK imported by the file or a project file it imports; reach through project imports (`reached_by`). Agents that call a model API over HTTP. Imports inside functions and relative imports followed. Inventory `schema_version` 2 (4.8): `tools[]` gains `source`, `sdk`, `platform_ref`, `calls` and `reached_by`; `server` and hashes are null for code tools; version 1 files rejected with a message to re-run. `tool.destructive_unowned` defined (7) and worked out again by the owner overlay (7.4). | Decisions after a live smoke run: extend `tools[]`, reach through project imports, HTTP client plus known host, a catalogue for money and messages |

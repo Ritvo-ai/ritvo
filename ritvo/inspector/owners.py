@@ -10,7 +10,7 @@ from ritvo.diagnostic.intake.columns import AGENTS, INTAKE_FILES
 from ritvo.diagnostic.intake.reader import Agent as IntakeAgent
 from ritvo.diagnostic.intake.reader import IntakeError, load_intake
 from ritvo.inspector.inventory import Agent, Inventory, OwnerOverlay
-from ritvo.inspector.registry import no_owner_findings
+from ritvo.inspector.registry import no_owner_findings, unowned_tool_findings
 
 FIELDS: tuple[Literal["owner", "owner_team"], ...] = ("owner", "owner_team")
 
@@ -100,13 +100,17 @@ def apply_overlay(
                 ],
             },
             "agents": [agent.model_dump() for agent in merged],
-            # agent.no_owner is worked out again; other findings are kept as they were.
+            # Findings that depend on owners are worked out again; the rest are kept.
             "findings": [
                 *(finding.model_dump() for finding in no_owner_findings(merged)),
                 *(
                     finding.model_dump()
+                    for finding in unowned_tool_findings(list(inventory.tools), merged)
+                ),
+                *(
+                    finding.model_dump()
                     for finding in inventory.findings
-                    if finding.rule != "agent.no_owner"
+                    if finding.rule not in ("agent.no_owner", "tool.destructive_unowned")
                 ),
             ],
         }

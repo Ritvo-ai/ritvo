@@ -490,11 +490,19 @@ def test_inventory_round_trip(tmp_path: Path) -> None:
     assert inventory.model_dump(mode="json") == data
 
 
-@pytest.mark.parametrize("version", [2, "1", True, 1.0, None])
+@pytest.mark.parametrize("version", [3, "2", True, 2.0, None])
 def test_inventory_rejects_other_schema_version(tmp_path: Path, version: object) -> None:
     data = _inventory_data(tmp_path)
     data["schema_version"] = version
-    assert "schema_version must be 1" in _load(tmp_path, data)
+    assert "schema_version must be 2" in _load(tmp_path, data)
+
+
+def test_inventory_rejects_version_1_with_a_rerun_message(tmp_path: Path) -> None:
+    data = _inventory_data(tmp_path)
+    data["schema_version"] = 1
+    message = _load(tmp_path, data)
+    assert "has schema_version 1, written before tools found in code" in message
+    assert "write a version 2 inventory" in message
 
 
 def test_inventory_rejects_version_0_with_a_rerun_message(tmp_path: Path) -> None:
@@ -509,7 +517,7 @@ def test_inventory_rejects_version_0_with_a_rerun_message(tmp_path: Path) -> Non
 def test_inventory_model_rejects_other_schema_version(tmp_path: Path) -> None:
     data = _inventory_data(tmp_path)
     data["schema_version"] = 0
-    with pytest.raises(ValidationError, match="schema_version must be 1"):
+    with pytest.raises(ValidationError, match="schema_version must be 2"):
         Inventory.model_validate(data)
 
 

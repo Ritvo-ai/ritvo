@@ -287,8 +287,10 @@ def import_doa(
 
 _NO_OWNER = "agent.no_owner"
 _SHARED = "identity.shared_key_name"
+_UNOWNED_TOOL = "tool.destructive_unowned"
 _FINDING_TEXT = {
     _NO_OWNER: "agents that need an owner",
+    _UNOWNED_TOOL: "high tier tools reached by an agent with no owner, or by no known agent",
     _SHARED: "credentials used by more than one agent",
 }
 
@@ -453,8 +455,8 @@ def inspect(
     for file in files:
         typer.echo(f"{file.platform:<{width}}  {file.agents} agents  {file.path}")
     if scanned is not None:
-        for root, read, found in scanned.results:
-            typer.echo(f"code  {read} Python files, {found} agents  {root}")
+        for root, read, found, tools in scanned.results:
+            typer.echo(f"code  {read} Python files, {found} agents, {tools} tools  {root}")
     if configs is not None:
         width = max((len(location.key) for location in configs.results), default=0)
         for location in configs.results:
@@ -467,7 +469,7 @@ def inspect(
             f"owners: {applied.fields_set} fields set, {applied.replaced} replaced a value  "
             f"{overlay.path}"
         )
-    for rule in (_NO_OWNER, _SHARED):
+    for rule in (_NO_OWNER, _SHARED, _UNOWNED_TOOL):
         count = sum(1 for finding in result.findings if finding.rule == rule)
         typer.echo(f"{rule}: {count} ({_FINDING_TEXT[rule]})")
     typer.echo(f"Wrote {out}")
