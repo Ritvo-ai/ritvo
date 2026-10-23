@@ -8,7 +8,8 @@ import typer
 
 from ritvo import __version__
 from ritvo.connectors.registry.common import RegistryError
-from ritvo.diagnostic.intake.reader import IntakeError
+from ritvo.diagnostic.intake.columns import AGENTS, PEOPLE, TOOLS
+from ritvo.diagnostic.intake.reader import CORRECTED, Intake, IntakeError, fix_intake, load_intake
 from ritvo.diagnostic.intake.templates import write_templates
 from ritvo.diagnostic.review.questions import LEVEL_LABELS
 from ritvo.diagnostic.review.report import write_report
@@ -90,25 +91,116 @@ def review(
     typer.echo(f"Wrote {target}")
 
 
+def _summary(intake: Intake) -> list[str]:
+    lines = []
+    if intake.agents is None:
+        lines.append(f"{AGENTS.name}  not given")
+    else:
+        no_owner = sum(1 for agent in intake.agents if agent.owner is None)
+        lines.append(f"{AGENTS.name}  {len(intake.agents)} agents, {no_owner} with no owner")
+    if intake.tools is None:
+        lines.append(f"{TOOLS.name}  not given; tool references not checked")
+    else:
+        no_tier = sum(1 for tool in intake.tools if tool.tier is None)
+        lines.append(f"{TOOLS.name}  {len(intake.tools)} tools, {no_tier} with no tier")
+    if intake.people is None:
+        lines.append(f"{PEOPLE.name}  not given; owner and deputy references not checked")
+    else:
+        lines.append(f"{PEOPLE.name}  {len(intake.people)} people")
+    return lines
+
+
 @app.command()
 def diagnose(
+    intake: Annotated[
+        Path | None,
+        typer.Argument(
+            file_okay=False,
+            help="A folder of intake files (agents.csv, tools.csv, people.csv) to check.",
+        ),
+    ] = None,
     templates: Annotated[
-        Path,
+        Path | None,
         typer.Option(
             "--templates",
             file_okay=False,
             help="Write the blank intake templates (agents.csv, tools.csv, people.csv) here.",
         ),
-    ],
+    ] = None,
+    fix: Annotated[
+        bool,
+        typer.Option(
+            "--fix",
+            help=f"Write a copy with the mechanical fixes applied to <folder>/{CORRECTED}/. "
+            "The original files are never changed.",
+        ),
+    ] = False,
 ) -> None:
     """Diagnose authority gaps from intake files. Reads files only."""
+    if (intake is None) == (templates is None):
+        _fail("give an intake folder, or --templates <dir>")
+    if fix and intake is None:
+        _fail("--fix needs an intake folder")
     try:
-        written = write_templates(templates)
+        if templates is not None:
+            for path in write_templates(templates):
+                typer.echo(f"Wrote {path}")
+        elif intake is not None:
+            _diagnose_intake(intake, fix)
     except IntakeError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
-    for path in written:
+
+
+def _problems(problems: tuple[str, ...]) -> None:
+    for problem in problems:
+        typer.echo(f"error: {problem}", err=True)
+
+
+def _diagnose_intake(intake: Path, fix: bool) -> None:
+    if not any((intake / file.name).is_file() for file in (AGENTS, TOOLS, PEOPLE)):
+        raise IntakeError(
+            f"no intake files in {intake}; write blank ones with ritvo diagnose --templates <dir>"
+        )
+    try:
+        result = load_intake(intake)
+    except IntakeError as exc:
+        if fix:
+            _write_corrected(intake, exc)
+            return
+        _problems(exc.problems)
+        if exc.fixes:
+            typer.echo(
+                f"{exc.fixes} of {len(exc.problems)} problems have a mechanical fix; run again "
+                f"with --fix to write a corrected copy to {intake / CORRECTED}",
+                err=True,
+            )
+        typer.echo("Nothing was written.", err=True)
+        raise typer.Exit(1) from None
+    for line in _summary(result):
+        typer.echo(line)
+    if fix:
+        typer.echo("Nothing to fix.")
+    typer.echo("Nothing was written. The draft ritvo.yaml and the gap report are not built yet.")
+
+
+def _write_corrected(intake: Path, error: IntakeError) -> None:
+    corrected = fix_intake(intake)
+    if corrected is None:
+        _problems(error.problems)
+        typer.echo("No problem has a mechanical fix. Nothing was written.", err=True)
+        raise typer.Exit(1)
+    for path in corrected.files:
         typer.echo(f"Wrote {path}")
+    typer.echo(f"{corrected.fixes} fixes applied; the original files were not changed.")
+    if corrected.remaining:
+        _problems(corrected.remaining)
+        typer.echo(
+            f"{len(corrected.remaining)} problems remain in {corrected.directory}.", err=True
+        )
+        raise typer.Exit(1)
+    for line in _summary(load_intake(corrected.directory)):
+        typer.echo(line)
 
 
 _NO_OWNER = "agent.no_owner"
