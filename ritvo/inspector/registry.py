@@ -83,7 +83,7 @@ def no_owner_findings(agents: list[Agent]) -> list[Finding]:
     ]
 
 
-def _findings(agents: list[Agent]) -> list[Finding]:
+def agent_findings(agents: list[Agent]) -> list[Finding]:
     findings = no_owner_findings(agents)
     by_credential: dict[str, list[str]] = {}
     for agent in agents:
@@ -168,6 +168,6 @@ def inspect_registry(
         mcp_servers=[],
         tools=[],
         identity=Identity(issuers=[]),
-        findings=_findings(agents),
+        findings=agent_findings(agents),
     )
     return RegistryRun(inventory=inventory, files=tuple(files), warnings=tuple(warnings))

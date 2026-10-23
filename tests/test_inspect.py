@@ -603,5 +603,11 @@ def test_no_network_no_governance_imports(package: str) -> None:
                     continue
                 assert name.split(".")[0] not in NETWORK_MODULES, f"{source}: {name}"
                 assert "governance_os" not in name, f"{source}: {name}"
-        # Never read environment values (docs/SPEC.md section 7).
-        assert not re.search(r"os\.environ|getenv", source.read_text(encoding="utf-8")), source
+        # Never read environment values (docs/SPEC.md section 7). The code scan names these
+        # functions as patterns to look for in other code, so the check is on the syntax tree.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute):
+                assert node.attr not in ("environ", "getenv"), f"{source}: os.{node.attr}"
+            if isinstance(node, ast.ImportFrom) and node.module == "os":
+                names = [alias.name for alias in node.names]
+                assert not {"environ", "getenv"} & set(names), source

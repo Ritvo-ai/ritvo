@@ -239,7 +239,7 @@ def test_version_0_inventory_is_rejected(tmp_path: Path) -> None:
         (["--inventory", "inventory.json"], "--inventory needs --owners"),
         (
             [*REGISTRY, "--inventory", "inventory.json", "--owners", str(OWNERS)],
-            "--inventory cannot be combined with --registry, --defaults or --config",
+            "--inventory cannot be combined with --registry, --code, --defaults or --config",
         ),
     ],
 )

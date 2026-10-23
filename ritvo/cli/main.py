@@ -29,6 +29,7 @@ from ritvo.diagnostic.review.scoring import (
     load_answers,
     score,
 )
+from ritvo.inspector.code import CodeError, add_agents, is_inside, scan_code
 from ritvo.inspector.config import (
     CLIENTS,
     ConfigError,
@@ -321,6 +322,16 @@ def inspect(
             help="A platform's agent export to read: agentcore or vertex. Repeatable.",
         ),
     ] = None,
+    code: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--code",
+            metavar="<dir>",
+            file_okay=False,
+            help="A source folder to scan for agents and environment variable names "
+            "(Python; parsed, never run). Repeatable.",
+        ),
+    ] = None,
     defaults: Annotated[
         bool,
         typer.Option(
@@ -369,17 +380,19 @@ def inspect(
 ) -> None:
     """Write inventory.json from files only. Read-only and local; never calls a platform."""
     reads_configs = defaults or bool(config)
-    if (registry or reads_configs) and inventory is not None:
-        _fail("--inventory cannot be combined with --registry, --defaults or --config")
+    if (registry or reads_configs or code) and inventory is not None:
+        _fail("--inventory cannot be combined with --registry, --code, --defaults or --config")
     if inventory is not None and owners is None:
         _fail("--inventory needs --owners")
     if project is not None and not defaults:
         _fail("--project needs --defaults")
-    if not registry and not reads_configs and inventory is None:
+    if not registry and not reads_configs and not code and inventory is None:
         _fail(
-            "give at least one --registry <platform>:<file>, --defaults or "
+            "give at least one --registry <platform>:<file>, --code <dir>, --defaults or "
             "--config <client>:<file>, or --inventory <file> with --owners <agents.csv>"
         )
+    if code and is_inside(out, code):
+        _fail(f"--out {out} is inside a --code folder; write the inventory outside it")
     if inventory is not None and _same_file(inventory, out):
         _fail(f"--out {out} is the file named by --inventory; choose another path")
     try:
@@ -418,15 +431,18 @@ def inspect(
         elif inventory is not None:
             base = load_inventory(inventory)
         if configs is not None:
-            result = add_servers(base, configs)
+            base = add_servers(base, configs)
             warnings += tuple(configs.warnings)
-        elif base is not None:
+        scanned = scan_code(code) if code else None
+        if scanned is not None:
+            base = add_agents(base, scanned)
+        if base is not None:
             result = base
         if overlay is not None:
             applied = apply_overlay(result, overlay)
             result = applied.inventory
             warnings += applied.warnings
-    except (RegistryError, ConfigError, OverlayError, InventoryError) as exc:
+    except (RegistryError, ConfigError, CodeError, OverlayError, InventoryError) as exc:
         _fail(str(exc))
     for key in unresolved:
         typer.echo(f"warning: {key}: not checked, APPDATA is not set", err=True)
@@ -436,6 +452,9 @@ def inspect(
     width = max((len(file.platform) for file in files), default=0)
     for file in files:
         typer.echo(f"{file.platform:<{width}}  {file.agents} agents  {file.path}")
+    if scanned is not None:
+        for root, read, found in scanned.results:
+            typer.echo(f"code  {read} Python files, {found} agents  {root}")
     if configs is not None:
         width = max((len(location.key) for location in configs.results), default=0)
         for location in configs.results:

@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.11-draft · 23 October 2026 · Licence: Apache-2.0
+Version 0.12-draft · 23 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -416,7 +416,8 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | `ritvo inspect --registry <platform>:<file>` | Read a platform's agent export into `inventory.json` |
 | `ritvo inspect --defaults [--project <dir>]` | Read MCP servers from the well-known client config locations (section 7.1) |
 | `ritvo inspect --config <client>:<file>` | Read MCP servers from one client config file (section 7.1) |
-| `ritvo inspect --owners <agents.csv>` | Merge owners from an intake file into an inventory, with `--registry` or with `--inventory <file>` (section 7.4) |
+| `ritvo inspect --code <dir>` | Find agents and environment variable names in Python source (section 7.5) |
+| `ritvo inspect --owners <agents.csv>` | Merge owners from an intake file into an inventory, with any source or with `--inventory <file>` (section 7.4) |
 | `ritvo import <inventory.json>` | Create a draft change request from an inventory |
 | `ritvo import-doa <matrix.csv> [--intake <dir>] [--no-input]` | Read a delegation-of-authority matrix exported as CSV, confirm how it is read, and write draft approval bands and roles (section 8.4) |
 | `ritvo init [--questionnaire]` | Build `ritvo.yaml` |
@@ -437,7 +438,7 @@ Sources in v0:
 | Source | What is read | Connects? | Phase |
 | --- | --- | --- | --- |
 | MCP configuration files | Server entries (name, transport, command or URL) in operator-named paths | No | 0 |
-| Code and environment scan | Framework imports and the names of environment variables such as `*_BASE_URL` and `*_API_KEY`, never values, in operator-named directories | No | 0 |
+| Code and environment scan | Framework imports and the names of environment variables such as `*_BASE_URL` and `*_API_KEY`, never values, in operator-named directories (section 7.5) | No | 0 |
 | Registry export | A client platform's agent export file, mapped by an adapter in `connectors/registry` (section 7.3) | No | 0 |
 | MCP introspection | `initialize` and `tools/list` on a named server; tool annotations; for HTTP servers the OAuth protected resource metadata (RFC 9728) | Yes, with consent | 1 |
 | Middleware self-report | The middleware sends `inventory.reported` at start-up | Already inside the client | 2 |
@@ -523,7 +524,7 @@ Rules:
 - `--out` MUST NOT be any path in `manifest.paths` from this source, found or not. If it is, nothing is written.
 - Home and app-data folders are resolved with `pathlib` and the variables `HOME`, `USERPROFILE` and `APPDATA` only. No other environment value is read, and no user name is hard-coded.
 - This source writes MCP servers only. It writes no agents and no findings. `mcp.no_auth` needs introspection (phase 1).
-- `--defaults` and `--config` can be combined with each other and with `--registry` and `--owners`. They write a new inventory, so they cannot be combined with `--inventory`.
+- `--defaults` and `--config` can be combined with each other and with `--registry`, `--code` and `--owners`. They write a new inventory, so they cannot be combined with `--inventory`.
 
 ### 7.2 Report
 
@@ -556,7 +557,7 @@ Design reference: `docs/design/inspect-report-sample.html` is a sample with fict
 
 ### 7.3 Registry exports
 
-`ritvo inspect --registry <platform>:<file>` reads an agent list that the operator exported from a client platform with that platform's own tool, and writes its agents to `inventory.json` with `source: registry`. It reads only the named files and never calls the platform. `--registry` may be given more than once. `--out` sets the inventory path; the default is `inventory.json` in the current directory. Each run writes a new inventory from the sources it is given. `ritvo inspect` needs at least one `--registry`, `--defaults` or `--config` (section 7.1), or `--inventory` with `--owners` (section 7.4).
+`ritvo inspect --registry <platform>:<file>` reads an agent list that the operator exported from a client platform with that platform's own tool, and writes its agents to `inventory.json` with `source: registry`. It reads only the named files and never calls the platform. `--registry` may be given more than once. `--out` sets the inventory path; the default is `inventory.json` in the current directory. Each run writes a new inventory from the sources it is given. `ritvo inspect` needs at least one `--registry`, `--code` (section 7.5), `--defaults` or `--config` (section 7.1), or `--inventory` with `--owners` (section 7.4).
 
 Platforms:
 
@@ -604,10 +605,10 @@ Help and remedies:
 
 Use:
 
-- With `--registry`, the overlay applies to the inventory built in the same run.
+- With `--registry`, `--code`, `--defaults` or `--config`, the overlay applies to the inventory built in the same run.
 - On its own, `--inventory <file>` names an existing inventory to read. That file is never changed. The result goes to `--out`.
 - `--out` MUST NOT be the file named by `--inventory`. That is refused, and nothing is written.
-- `--owners` needs `--registry` or `--inventory`. Without either, it is an error.
+- `--owners` needs one of those sources or `--inventory`. Without one, it is an error.
 
 Reading the file:
 
@@ -632,6 +633,38 @@ Merging:
 - `agent.no_owner` findings are worked out again from the merged agents. Other findings are kept as they were.
 
 The terminal prints the number of fields set, how many of them replaced a non-null value, each warning, and the path written. Exit status: 0 when the inventory is written, non-zero otherwise.
+
+### 7.5 Code and environment scan
+
+`ritvo inspect --code <dir>` reads Python source in a folder the operator names and writes the agents it finds to `agents[]` with `source: code`, and the names of environment variables to `manifest.env_names_seen`. Source is parsed with Python's `ast` module. It is never imported or run, and no environment value is read. `--code` may be given more than once; naming the same folder twice is refused. It combines with every other source and with `--owners`, and not with `--inventory`.
+
+What is read:
+
+- Every `.py` file under the folder, in name order. Folders whose names start with `.`, and folders named `node_modules`, `__pycache__`, `site-packages`, `build`, `dist`, `venv`, `env`, `tests` and `test`, are skipped. Files named `test_*.py`, `*_test.py` and `conftest.py` are skipped. Symbolic links are never followed, to folders or to files.
+- `.env.example`, `.env.sample` and `.env.template`, for variable names only: each line of the form `NAME=` or `export NAME=` gives `NAME`. A `.env` file, or any other `.env.*` file, is never opened, because it holds real values.
+- A file larger than 1,000,000 bytes, a file that is not UTF-8, and a Python file that does not parse are listed in `manifest.unreadable`, and the run continues.
+
+Agents:
+
+- Each Python file that imports an agent framework or a model SDK is one agent. Imports are read from `import` and `from ... import` statements anywhere in the file; relative imports are ignored.
+- Frameworks, by module, in the order one is chosen when a file imports several: `langgraph` (langgraph), `crewai` (crewai), `autogen` and `autogen_agentchat` (autogen), `llama_index` (llama-index), `pydantic_ai` (pydantic-ai), `semantic_kernel` (semantic-kernel), `smolagents` (smolagents), `google.adk` (google-adk), `strands` (strands), `langchain` and `langchain_core` (langchain), `mcp` and `fastmcp` (mcp).
+- Model SDKs: `anthropic`, `openai`, `google.genai`, `google.generativeai`, `mistralai`, `cohere` and `groq`. A file that imports only an SDK is an agent with `framework` null.
+- `id` is `code.`, the folder's name, and the file's path inside it without `.py`, joined by `.`, in lower case, with any character outside `a-z`, `0-9`, `.`, `_` and `-` replaced by `-`: `agents/research.py` in `app` gives `code.app.agents.research`. An ID longer than 64 characters is cut to 55 and given `-` and the first 8 hex characters of the SHA-256 of the relative path. A clash gets `-2`, `-3` and so on, in scan order.
+- `platform_ref` is the file's path inside the folder, with `/` as separator. `name`, `platform`, `owner` and `owner_team` are null.
+- `credential` is the first variable name the file reads that ends in `_API_KEY`, `_KEY`, `_TOKEN`, `_SECRET`, `_PASSWORD` or `_CREDENTIALS`, or null. An SDK that reads its key without the file naming it leaves `credential` null: unknown, not absent.
+
+Environment variable names:
+
+- Names come from string literals in `os.environ[...]`, `os.environ.get`, `os.environ.setdefault`, `os.environ.pop` and `os.getenv`, and the same calls through `from os import environ, getenv`. A name built at run time is not seen.
+- Every name seen, from code and from the example files, goes to `manifest.env_names_seen`, sorted and each once. Values, including default values in the code, are never read into the inventory.
+
+Rules:
+
+- The manifest lists each folder in `paths` as the resolved path and counts each file read in `files_read`.
+- Findings are worked out again over every agent in the inventory: `agent.no_owner`, and `identity.shared_key_name` for a credential name two or more agents read.
+- `--out` MUST NOT be inside a `--code` folder. That is refused, and nothing is written.
+- The terminal prints, for each folder, the number of Python files read and agents found, then the findings by rule.
+- Python only in this version. Other languages are an open item (section 12).
 
 ## 8. Diagnostic
 
@@ -965,6 +998,7 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - The migration of `review_version: 0` files: defined in section 8.1. No longer open.
 - Which design partner's platforms set the order of inspector sources after the registry readers.
 - Approval rules exported from ERP and procurement tools (for example SAP release strategies, Coupa approval chains, Workday business processes) as further DoA inputs (section 8.4). No export format is verified yet.
+- Languages other than Python for the code scan (section 7.5), for example TypeScript and JavaScript with the TypeScript middleware.
 - Roles held by more than one person: `roles` in section 4.1 maps one person to each role, while `people.csv` and a DoA can give a role several holders. To settle when `ritvo diagnose` builds the draft `ritvo.yaml`.
 
 ## 13. Platform support and CI
@@ -998,7 +1032,7 @@ The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, th
 
 | Phase | Spec sections in force | Built | Specified, not built |
 | --- | --- | --- | --- |
-| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1) | Code and environment scan (7); the findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report in 7.2; the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (6.3) |
+| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5) | The findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report in 7.2; the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (6.3) |
 | 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | Nothing | All of it |
 | 2 Decide | 4.1 approval bands at ask time; 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
 | 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
@@ -1024,3 +1058,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.9-draft | 23 October 2026 | `ritvo diagnose <dir>` defined (8.2): the intake check and summary, suggested fixes (mechanical fixes and hints), and the corrected copy written by `--fix` to `<dir>/corrected/`. CLI row added (6.3). Phase 0 build status updated (14). | Decisions on the intake wiring: mechanical fixes only, never a name or email turned into an ID, spaces become `_`, copy in `corrected/`, validate and summarise until the draft exists |
 | 0.10-draft | 23 October 2026 | Delegation-of-authority import defined (8.4): the client's own matrix exported as CSV, wide and long layouts read into one record shape, cell reading, bands and ladders, role IDs, links from decisions to tools, interactive confirmation saved to a mapping file, `--no-input`, and the draft file. Approval bands per tool added to `ritvo.yaml` (4.1). CLI row updated (6.3). ERP approval exports and roles with several holders added to the open items (12). | Decisions on the DoA input: the client's own matrix, CSV export only, interactive confirmation, approval bands per tool |
 | 0.11-draft | 23 October 2026 | DoA import rules the first build relies on, written down (8.4): how the delimiter, header row, layout, decision and level columns, number format, currency and codes are proposed; zero and dashes as no authority; the conflict rule against unlimited and empty cells; role ID edges; tool proposals and the `tools.csv` check; refused intake and mapping files; re-asking an invalid answer; file names; mapping file contents; the draft's `decision` field and decisions with no authority; terminal output. Build status updated (14). | Pull request for the DoA import |
+| 0.12-draft | 23 October 2026 | Code and environment scan defined (7.5): one agent per Python file that imports a framework or model SDK, IDs from the path, skipped folders and files, `.env` never opened, example env files read for names, credential and env-name rules, unreadable files, the `--out` guard. CLI row added (6.3); `--owners` and the combination rules updated for the new source (7.1, 7.3, 7.4). Other languages added to the open items (12). Build status updated (14). | Decisions on the code scan: one agent per file, names from code and example env files only, tests skipped, Python only |
