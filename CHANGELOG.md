@@ -37,5 +37,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - PRD draft v0.4: bring the phase 0 status up to date with what is built.
 - Spec 0.8-draft: agree and define the help text and remedy hints for registry exports (section 7.3); `ritvo inspect` no longer described as needing `--registry`. PRD draft v0.5: export help moved to built.
 - Spec 0.9-draft: define `ritvo diagnose <dir>` (section 8.2): the intake check and summary, suggested fixes and the corrected copy written by `--fix`. PRD draft v0.6: the intake wiring moved to built.
+- Spec 0.10-draft: define the delegation-of-authority import (section 8.4) and approval bands per tool in `ritvo.yaml` (section 4.1). PRD draft v0.7: DoA import specified.
 
 [Unreleased]: https://github.com/Ritvo-ai/ritvo/commits/main

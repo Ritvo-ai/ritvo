@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.9-draft · 23 October 2026 · Licence: Apache-2.0
+Version 0.10-draft · 23 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -80,6 +80,15 @@ tools:
     match: { method: POST, path: /orders/* }
     tier: high
     approval_ttl_minutes: 15
+    approvals:                 # optional; value bands from a delegation of authority (8.4)
+      parameter: order_value
+      currency: EUR
+      bands:
+        - up_to: 10000
+          ladder: [desk_head, head_of_trading, cro]
+        - up_to: 50000
+          ladder: [head_of_trading, cro]
+        - ladder: [cro]        # no up_to: everything above the last bound
 bindings:
   - agent: acme.research
     tool: broker.order
@@ -99,6 +108,8 @@ ladders:
 ```
 
 Constraints: every agent MUST have an `owner` when `mode` is `enforce`. Config values that are secrets MUST be `secret://` references. `ritvo check` MUST reject a file that violates these.
+
+Approval bands (`tools[].approvals`): a tool MAY carry value bands that name who approves an ask according to the value of one request parameter. `parameter` names that parameter; `currency` is an ISO 4217 code or null. `bands` are in ascending order of `up_to`; each `up_to` is a number, inclusive; only the last band has no `up_to`, and it covers every value above the bound before it. Each `ladder` is an ordered list of roles, as in `ladders`. A tool with `approvals` uses the band's ladder in place of the tier ladder; the tier still sets the rules of section 5.3, and section 5.4 applies unchanged. When a request does not carry the parameter, or carries one that is not a number, the last band applies. Bands are drafted by `ritvo import-doa` (section 8.4) and are used by the ask path in phase 2.
 
 ### 4.2 Principal
 
@@ -407,7 +418,7 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | `ritvo inspect --config <client>:<file>` | Read MCP servers from one client config file (section 7.1) |
 | `ritvo inspect --owners <agents.csv>` | Merge owners from an intake file into an inventory, with `--registry` or with `--inventory <file>` (section 7.4) |
 | `ritvo import <inventory.json>` | Create a draft change request from an inventory |
-| `ritvo import-doa <matrix.csv>` | Draft bindings and roles from a delegation-of-authority matrix |
+| `ritvo import-doa <matrix.csv> [--intake <dir>] [--no-input]` | Read a delegation-of-authority matrix exported as CSV, confirm how it is read, and write draft approval bands and roles (section 8.4) |
 | `ritvo init [--questionnaire]` | Build `ritvo.yaml` |
 | `ritvo check` | Validate config, secrets, identity and the authority diff |
 | `ritvo apply` | Apply a signed-off policy version |
@@ -810,6 +821,81 @@ The inspector comes first. Where an inventory exists, the answers file is drafte
 
 - The command that produces the draft, and the sources for the Observe questions, are open items (section 12). Until the inspector lands, a person writes the answers file by hand, as in section 8.1.
 
+### 8.4 Delegation-of-authority import
+
+Most organisations keep their delegation of authority (DoA) as a spreadsheet owned by finance or legal. `ritvo import-doa <matrix.csv>` reads that spreadsheet as the organisation keeps it, exported as CSV, and turns it into draft approval bands (section 4.1) and the roles they name. Nobody rewrites the matrix into a Ritvo format. The command reads files only, never edits the matrix, and never writes `ritvo.yaml`. A matrix, its mapping file and its draft are client data and MUST NOT be committed to a public repository.
+
+Input:
+
+- One CSV file per run: the sheet that holds the matrix, exported with the spreadsheet's own "Save as CSV". `.xlsx` is not read.
+- UTF-8, with or without a byte order mark. A file that is not UTF-8 is refused with a message to export again as "CSV UTF-8".
+- The delimiter is `,`, `;` or tab, detected from the file and confirmed. Quoting as in RFC 4180.
+- Title rows, blank rows and note rows above the header are allowed. Merged cells arrive as one filled cell followed by empty cells; an empty decision cell under a filled one continues the decision above it.
+
+Layouts. Two layouts are read and turned into the same records:
+
+- **Wide**: one row per decision, one column per authority level. A cell holds that level's limit for that decision.
+- **Long**: one row per decision and level, with a column for the level and a column for its limit.
+
+Example, wide:
+
+| Decision | Ref | Manager | Director | CFO | CEO |
+| --- | --- | --- | --- | --- | --- |
+| Supplier payment | F-01 | 10,000 | 100,000 | 1,000,000 | Unlimited |
+| Customer refund | S-04 | 500 | 5,000 | | |
+| New supplier contract | L-02 | — | R | A | A |
+
+The same, long:
+
+| Decision | Approver | Limit |
+| --- | --- | --- |
+| Supplier payment | Manager | 10,000 |
+| Supplier payment | Director | 100,000 |
+
+Every layout becomes records of one shape: decision, role, limit, where the limit is a number, unlimited, or no authority. Bands are derived from those records alone, so a new layout needs only a new way to read rows.
+
+Reading cells:
+
+- A number, with thousands separators, an optional currency symbol or ISO 4217 code, and an optional suffix `k`, `m` or `bn`, is a limit. Whether `.` or `,` is the thousands separator is detected from the file and confirmed.
+- `unlimited`, `no limit`, `any` and `full` are unlimited. An empty cell, `-`, `—`, `n/a`, `none` and `0` are no authority. Matching ignores case and surrounding spaces.
+- A letter code such as `A`, `R` or `I` is asked about once per code: it means approves without limit, or no authority. Only approval gives a role a place in a ladder.
+- Any other value in a level cell is a problem: it is reported by line and column, and that cell is read as no authority.
+- One currency per matrix, detected from symbols and codes and confirmed. Mixed currencies are a problem. No currency at all is allowed; the draft's `currency` is then null.
+
+From records to bands, for each decision:
+
+- Each distinct limit becomes the `up_to` of a band, in ascending order. A last band without `up_to` is added.
+- A band's ladder lists every role whose limit is at least the band's `up_to`, or unlimited, ordered from the smallest limit to the largest, then the unlimited roles in column order. The first role is the lowest level with enough authority, and the ask moves upward from there.
+- The last band's ladder lists the unlimited roles. If there are none, its ladder is empty and the problem "no approver above <limit>" is reported.
+- A decision with no role holding authority is reported and gives no bands.
+- The same decision and role with two different limits is a problem; the smaller limit is used.
+
+Roles. A level name becomes a role ID: lower case, each run of characters outside `a-z`, `0-9`, `.`, `_` and `-` becomes `_`, and leading and trailing `_` are removed. `VP Finance` becomes `vp_finance`; `CFO / COO` becomes `cfo_coo`. The proposed ID is confirmed. Approvers are roles only: a name in a level column is read as a role, and `people.csv` (section 8.2) says who holds each role.
+
+Linking decisions to tools. The matrix speaks of business decisions; bands belong to tools. With `--intake <dir>`, the `tools.csv` and `people.csv` in that folder are read with the rules of section 8.2:
+
+- For each decision the closest tool is proposed, by the similarity of the decision text to each `tool_id` and `description`, with the ratio of section 8.2. The operator accepts it, picks other tools, or links none. A decision may link to several tools.
+- For each linked tool the operator confirms the parameter the limit applies to. The proposal is `amount`.
+- Without `--intake`, or without `tools.csv`, the operator types tool IDs, which MUST be valid IDs, or links none.
+- A decision linked to no tool is kept in the draft as unlinked, never dropped.
+- If two decisions link to the same tool, that is a problem: the tool gets no bands until a person chooses between them in the mapping file.
+- With `people.csv`, each role that nobody holds is reported.
+
+Confirmation and the mapping file:
+
+- The command proposes how to read the file: the delimiter, the header row, the layout, the decision column, the level columns and their role IDs (or, for the long layout, the level and limit columns), the number format, the currency, the meaning of each letter code, and the link of each decision to tools and a parameter. Columns it does not use, such as `Ref` or `Notes`, are listed as ignored.
+- Each proposal is shown with its default. Pressing Enter accepts it; the operator may type another answer. Nothing is written until every question is answered.
+- The answers are saved to `<matrix>.mapping.yaml` beside the matrix, with the matrix's SHA-256 and header. A later run with the same header reuses the mapping and asks only about decisions, levels or codes it does not cover. A run whose header has changed asks again from the start and replaces the mapping only after the new answers are confirmed.
+- `--no-input` never asks: it uses the mapping file and fails, writing nothing, if any question is unanswered. CI and scripts use it.
+- The mapping file is the contract for any front end. A later interface (phase 1) asks the same questions and writes the same file.
+
+Output:
+
+- `<matrix>.draft.yaml` beside the matrix, replaced on each successful run. It holds `doa_draft_version: 1`; `source` with the file name and SHA-256; `roles`, each with its holders from `people.csv`, or an empty list when `people.csv` was not given; `tools`, each with `id` and `approvals` in the shape of section 4.1; `unlinked`, the decisions linked to no tool, each with its bands; and `problems`.
+- The draft is a proposal. It never edits `ritvo.yaml`. `ritvo diagnose` will merge it into the draft `ritvo.yaml` (section 6.3), and any change to `ritvo.yaml` goes through section 5.5.
+- The terminal prints the number of decisions, roles, linked tools and problems, and the paths written. Exit status: 0 when the draft is written, non-zero otherwise. A problem in the matrix does not stop the draft; it is listed in it.
+- Errors and problems name the line and column. The terminal and the draft show decision names and level names, because a person must recognise them to confirm; they never show any other cell content.
+
 ## 9. Security requirements
 
 - Tokens: validate issuer, audience and expiry; never store or forward a raw token; one hop, one token.
@@ -871,6 +957,8 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - How an evidence reference to a document is recorded (section 8.1). The cap for `asserted` answers is now defined in section 8.1, scoring rule 4.
 - The migration of `review_version: 0` files: defined in section 8.1. No longer open.
 - Which design partner's platforms set the order of inspector sources after the registry readers.
+- Approval rules exported from ERP and procurement tools (for example SAP release strategies, Coupa approval chains, Workday business processes) as further DoA inputs (section 8.4). No export format is verified yet.
+- Roles held by more than one person: `roles` in section 4.1 maps one person to each role, while `people.csv` and a DoA can give a role several holders. To settle when `ritvo diagnose` builds the draft `ritvo.yaml`.
 
 ## 13. Platform support and CI
 
@@ -903,7 +991,7 @@ The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, th
 
 | Phase | Spec sections in force | Built | Specified, not built |
 | --- | --- | --- | --- |
-| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4 inspector; 8, 8.1, 8.2, 8.3 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1) | Code and environment scan (7); the findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report in 7.2; the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (6.3) |
+| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1) | Code and environment scan (7); the findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report in 7.2; the DoA import (8.4) and approval bands (4.1); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (6.3) |
 | 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | Nothing | All of it |
 | 2 Decide | 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
 | 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
@@ -927,3 +1015,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.7-draft | 22 October 2026 | Config discovery rules the first build relied on, written down (7.1): `--project` and `--config` option rules, unset `APPDATA`, ID suffix after the cut, non-string fields, `type` deciding transport, URL and command parsing, `env_names_seen` order, manifest path order and `files_read` counting, strict JSON, partly unreadable `~/.claude.json`, entries that are not objects, server order, terminal lines, `--out` guard. Comments in config files added to the open items (12). Phase 0 build status brought up to date (14). | Pull request 21 |
 | 0.8-draft | 22 October 2026 | Help and remedies for registry exports agreed and defined (7.3), as built with the registry readers; closed in the open items (12). The rule that `ritvo inspect` needs a `--registry` updated for config discovery and the owner overlay (7.3). | Maintainer approval of the export help proposal |
 | 0.9-draft | 23 October 2026 | `ritvo diagnose <dir>` defined (8.2): the intake check and summary, suggested fixes (mechanical fixes and hints), and the corrected copy written by `--fix` to `<dir>/corrected/`. CLI row added (6.3). Phase 0 build status updated (14). | Decisions on the intake wiring: mechanical fixes only, never a name or email turned into an ID, spaces become `_`, copy in `corrected/`, validate and summarise until the draft exists |
+| 0.10-draft | 23 October 2026 | Delegation-of-authority import defined (8.4): the client's own matrix exported as CSV, wide and long layouts read into one record shape, cell reading, bands and ladders, role IDs, links from decisions to tools, interactive confirmation saved to a mapping file, `--no-input`, and the draft file. Approval bands per tool added to `ritvo.yaml` (4.1). CLI row updated (6.3). ERP approval exports and roles with several holders added to the open items (12). | Decisions on the DoA input: the client's own matrix, CSV export only, interactive confirmation, approval bands per tool |
