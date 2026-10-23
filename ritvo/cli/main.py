@@ -1,6 +1,7 @@
 """The `ritvo` command line."""
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -8,6 +9,15 @@ import typer
 
 from ritvo import __version__
 from ritvo.connectors.registry.common import RegistryError
+from ritvo.diagnostic.doa.draft import build_draft, draft_path, write_draft
+from ritvo.diagnostic.doa.mapping import (
+    confirm_mapping,
+    load_mapping,
+    mapping_path,
+    no_input,
+    save_mapping,
+)
+from ritvo.diagnostic.doa.matrix import DoaError, column_keys
 from ritvo.diagnostic.intake.columns import AGENTS, PEOPLE, TOOLS
 from ritvo.diagnostic.intake.reader import CORRECTED, Intake, IntakeError, fix_intake, load_intake
 from ritvo.diagnostic.intake.templates import write_templates
@@ -201,6 +211,77 @@ def _write_corrected(intake: Path, error: IntakeError) -> None:
         raise typer.Exit(1)
     for line in _summary(load_intake(corrected.directory)):
         typer.echo(line)
+
+
+def _prompt(question: str, default: str, check: Callable[[str], str | None]) -> str:
+    while True:
+        answer = str(typer.prompt(question, default=default)).strip()
+        problem = check(answer)
+        if problem is None:
+            return answer
+        typer.echo(f"  {problem}", err=True)
+
+
+@app.command("import-doa")
+def import_doa(
+    matrix: Annotated[
+        Path,
+        typer.Argument(
+            dir_okay=False, help="The delegation-of-authority sheet, exported as CSV UTF-8."
+        ),
+    ],
+    intake: Annotated[
+        Path | None,
+        typer.Option(
+            "--intake",
+            exists=True,
+            file_okay=False,
+            help="An intake folder: tools.csv to link decisions to tools, people.csv for roles.",
+        ),
+    ] = None,
+    unattended: Annotated[
+        bool,
+        typer.Option("--no-input", help="Ask nothing; use the mapping file as it is."),
+    ] = False,
+) -> None:
+    """Draft approval bands and roles from a DoA matrix. Reads files only."""
+    mapping_file = mapping_path(matrix)
+    draft_file = draft_path(matrix)
+    try:
+        tools = people = None
+        if intake is not None:
+            try:
+                files = load_intake(intake)
+            except IntakeError as exc:
+                raise DoaError(f"{exc}; check it with ritvo diagnose {intake}") from None
+            tools, people = files.tools, files.people
+        previous = load_mapping(mapping_file)
+        if unattended and previous is None:
+            raise DoaError(
+                f"--no-input needs {mapping_file.name}; run once without --no-input to write it"
+            )
+        source, mapping = confirm_mapping(
+            matrix, previous, tools, no_input if unattended else _prompt
+        )
+        draft = build_draft(source, mapping, people)
+    except DoaError as exc:
+        _fail(str(exc))
+    header = source.row(mapping.header_line) or ()
+    used = {mapping.decision_column, *mapping.level_columns}
+    used |= {column for column in (mapping.level_column, mapping.limit_column) if column}
+    ignored = [key for key in column_keys(header) if key not in used]
+    save_mapping(mapping, mapping_file)
+    write_draft(draft, draft_file)
+    if ignored:
+        typer.echo(f"Ignored columns: {', '.join(ignored)}")
+    for problem in draft.problems:
+        typer.echo(f"problem: {problem}", err=True)
+    typer.echo(
+        f"{draft.decisions} decisions, {draft.roles} roles, {draft.tools} tools linked, "
+        f"{len(draft.problems)} problems"
+    )
+    typer.echo(f"Wrote {mapping_file}")
+    typer.echo(f"Wrote {draft_file}")
 
 
 _NO_OWNER = "agent.no_owner"

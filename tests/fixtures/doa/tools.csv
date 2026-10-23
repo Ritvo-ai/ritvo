@@ -1,0 +1,3 @@
+tool_id,system,access,description,tier,owner_team,approval_ttl_minutes
+erp.payment_create,erp,write,Create a supplier payment,high,finance,15
+zendesk.refund_issue,zendesk,write,Issue a customer refund,medium,support,
