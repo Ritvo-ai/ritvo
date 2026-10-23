@@ -142,7 +142,7 @@ def test_manifest_and_unreadable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ]
     # pipeline, agents/*, util/helpers, broken, latin1 and .env.example; big.py is not read.
     assert run.files_read == 9
-    assert run.results == [(root, 8, 4)]
+    assert run.results == [(root, 8, 4, 0)]
 
 
 @pytest.mark.skipif(os.name == "nt", reason="symlinks need extra rights on Windows")
@@ -195,7 +195,7 @@ def test_cli_code(tmp_path: Path) -> None:
     out.parent.mkdir()
     result = runner.invoke(app, ["inspect", "--code", str(root), "--out", str(out)])
     assert result.exit_code == 0, result.output
-    assert f"code  7 Python files, 4 agents  {root}" in result.output
+    assert f"code  7 Python files, 4 agents, 0 tools  {root}" in result.output
     assert "identity.shared_key_name: 1" in result.output
     inventory = load_inventory(out)
     assert inventory.manifest.env_names_seen == sorted(
@@ -253,3 +253,155 @@ def test_cli_code_not_with_inventory(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "cannot be combined" in result.output
+
+
+# Tools, reach and model APIs over HTTP
+
+ORDERS = {
+    "app/pipeline.py": (
+        "from langgraph.graph import StateGraph\n"
+        "def run():\n"
+        "    from app.execution.orders import send\n"
+        "    send()\n"
+    ),
+    "app/__init__.py": "",
+    "app/execution/__init__.py": "",
+    "app/execution/broker.py": (
+        "from kiteconnect import KiteConnect\ndef client():\n    return KiteConnect(api_key='x')\n"
+    ),
+    "app/execution/orders.py": (
+        "from .broker import client\n"
+        "def send():\n"
+        "    kite = client()\n"
+        "    kite.place_order(variety='regular')\n"
+        "    kite.place_gtt(trigger=1)\n"
+        "def unrelated(x):\n"
+        "    x.place_order()\n"
+    ),
+    "app/billing.py": (
+        "import stripe\n"
+        "import smtplib\n"
+        "stripe.Refund.create(charge='ch')\n"
+        "stripe.Customer.create(email='e')\n"
+        "smtplib.SMTP('h').send_message(None)\n"
+    ),
+    "app/validators/news.py": (
+        "import httpx\n"
+        "BASE = 'https://api.perplexity.ai'\n"
+        "def ask():\n"
+        "    return httpx.post(BASE + '/chat')\n"
+    ),
+    "app/validators/wrapper.py": "from app.validators.news import ask\n",
+    "app/notes.py": "URL = 'https://api.openai.com/v1'\n",
+    "app/lookalike.py": "def place_order(x):\n    x.place_order()\n",
+}
+
+
+def _orders(tmp_path: Path) -> Path:
+    root = tmp_path / "proj"
+    for name, text in ORDERS.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return root
+
+
+def test_tools_from_the_catalogue(tmp_path: Path) -> None:
+    run = scan_code([_orders(tmp_path)])
+    tools = {tool.id: tool for tool in run.tools}
+    assert set(tools) == {
+        "code.proj.app.execution.orders/kiteconnect",
+        "code.proj.app.billing/smtplib",
+        "code.proj.app.billing/stripe",
+    }
+    orders = tools["code.proj.app.execution.orders/kiteconnect"]
+    # kiteconnect is imported by broker.py, which orders.py imports.
+    assert (orders.source, orders.server, orders.sdk, orders.platform_ref) == (
+        "code",
+        None,
+        "kiteconnect",
+        "app/execution/orders.py",
+    )
+    assert orders.calls == ["place_gtt", "place_order"]
+    assert orders.proposed_tier == "high"
+    assert (orders.description_hash, orders.input_schema_hash) == (None, None)
+    assert tools["code.proj.app.billing/stripe"].calls == ["Refund.create"]
+    assert tools["code.proj.app.billing/smtplib"].proposed_tier == "medium"
+    # broker.py creates the client but places nothing; lookalike.py never imports the SDK.
+    assert not any("broker" in tool_id or "lookalike" in tool_id for tool_id in tools)
+
+
+def test_reach_follows_project_imports(tmp_path: Path) -> None:
+    run = scan_code([_orders(tmp_path)])
+    tools = {tool.id: tool for tool in run.tools}
+    # The pipeline imports orders.py inside a function.
+    assert tools["code.proj.app.execution.orders/kiteconnect"].reached_by == [
+        "code.proj.app.pipeline"
+    ]
+    assert tools["code.proj.app.billing/stripe"].reached_by == []
+
+
+def test_model_api_over_http(tmp_path: Path) -> None:
+    ids = {agent.id for agent in scan_code([_orders(tmp_path)]).agents}
+    assert "code.proj.app.validators.news" in ids
+    # Importing the HTTP agent does not make an agent, and a host without a client does not.
+    assert "code.proj.app.validators.wrapper" not in ids
+    assert "code.proj.app.notes" not in ids
+
+
+def test_unowned_high_tier_tool_finding(tmp_path: Path) -> None:
+    inventory = add_agents(None, scan_code([_orders(tmp_path)]))
+    unowned = {
+        f.subject: f.agents for f in inventory.findings if f.rule == "tool.destructive_unowned"
+    }
+    assert unowned == {
+        "code.proj.app.execution.orders/kiteconnect": ["code.proj.app.pipeline"],
+        # No agent is known to reach it.
+        "code.proj.app.billing/stripe": [],
+    }
+
+
+def test_owner_clears_the_tool_finding(tmp_path: Path) -> None:
+    root = _orders(tmp_path)
+    intake = tmp_path / "intake"
+    intake.mkdir()
+    (intake / "agents.csv").write_text(
+        "agent_id,owner\ncode.proj.app.pipeline,amara\n", encoding="utf-8"
+    )
+    out = tmp_path / "inventory.json"
+    result = runner.invoke(
+        app,
+        ["inspect", "--code", str(root), "--owners", str(intake / "agents.csv"), "--out", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "code  10 Python files, 2 agents, 3 tools" in result.output
+    assert "tool.destructive_unowned: 1" in result.output
+    findings = load_inventory(out).findings
+    assert [f.subject for f in findings if f.rule == "tool.destructive_unowned"] == [
+        "code.proj.app.billing/stripe"
+    ]
+
+
+def test_code_tool_model_rules() -> None:
+    from pydantic import ValidationError
+
+    from ritvo.inspector.inventory import Annotations, Tool
+
+    empty = Annotations(readOnly=None, destructive=None, idempotent=None, openWorld=None)
+    base = {
+        "id": "s/t",
+        "server": None,
+        "sdk": "kiteconnect",
+        "platform_ref": "a.py",
+        "calls": ["place_order"],
+        "description_hash": None,
+        "input_schema_hash": None,
+        "annotations": empty,
+        "proposed_tier": "high",
+        "reached_by": [],
+    }
+    Tool.model_validate({**base, "source": "code"})
+    with pytest.raises(ValidationError, match="code tool"):
+        Tool.model_validate({**base, "source": "code", "calls": []})
+    with pytest.raises(ValidationError, match="mcp tool"):
+        Tool.model_validate({**base, "source": "mcp"})

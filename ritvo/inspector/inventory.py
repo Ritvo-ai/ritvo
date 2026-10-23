@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # The ID rule of docs/SPEC.md section 8.2.
 ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
@@ -97,11 +97,27 @@ class Annotations(_Model):
 
 class Tool(_Model):
     id: Annotated[StrictStr, Field(pattern=rf"^{ID_PATTERN.pattern}/.+$")]
-    server: Id
-    description_hash: Sha256Ref
-    input_schema_hash: Sha256Ref
+    source: Literal["mcp", "code"]
+    server: Id | None
+    sdk: StrictStr | None
+    platform_ref: StrictStr | None
+    calls: list[StrictStr]
+    description_hash: Sha256Ref | None
+    input_schema_hash: Sha256Ref | None
     annotations: Annotations
     proposed_tier: Literal["low", "medium", "high"] | None
+    reached_by: list[Id]
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.source == "mcp":
+            if self.server is None or self.description_hash is None:
+                raise ValueError("an mcp tool needs server and description_hash")
+            if self.input_schema_hash is None or self.sdk or self.platform_ref or self.calls:
+                raise ValueError("an mcp tool has input_schema_hash and no sdk, path or calls")
+        elif self.server is not None or not self.sdk or not self.platform_ref or not self.calls:
+            raise ValueError("a code tool has no server, and needs sdk, platform_ref and calls")
+        return self
 
 
 class Identity(_Model):
@@ -152,6 +168,9 @@ def _problems(exc: ValidationError) -> str:
     return "; ".join(problems)
 
 
+_OLD_VERSIONS = {0: "manifest.owner_overlays", 1: "tools found in code (tools[].source)"}
+
+
 def load_inventory(path: Path) -> Inventory:
     try:
         data = json.loads(path.read_bytes().decode("utf-8"))
@@ -160,10 +179,10 @@ def load_inventory(path: Path) -> Inventory:
     if not isinstance(data, dict):
         raise InventoryError(f"{path.name} must hold one JSON object")
     version = data.get("schema_version")
-    if type(version) is int and version == 0:
+    if type(version) is int and version in _OLD_VERSIONS:
         raise InventoryError(
-            f"{path.name} has schema_version 0, written before manifest.owner_overlays "
-            "existed; run the inspector again to write a version 1 inventory"
+            f"{path.name} has schema_version {version}, written before {_OLD_VERSIONS[version]} "
+            f"existed; run the inspector again to write a version {SCHEMA_VERSION} inventory"
         )
     if type(version) is not int or version != SCHEMA_VERSION:
         raise InventoryError(
