@@ -1,6 +1,6 @@
 # Ritvo — Product Requirements (PRD)
 
-Status: draft v0.9 · 23 October 2026 · Owner: SK · Licence: Apache-2.0
+Status: draft v0.10 · 23 October 2026 · Owner: SK · Licence: Apache-2.0
 
 ## 1. Summary
 
@@ -135,7 +135,7 @@ Status of phase 0:
 
 | State | Items |
 | --- | --- |
-| Built | `ritvo review` with the scoring contract; intake templates and their reader, called by `ritvo diagnose <dir>` with suggested fixes and `--fix`; inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; DoA import from the client's own matrix (`ritvo import-doa`); code and environment scan (`ritvo inspect --code`); repository hygiene and CI |
+| Built | `ritvo review` with the scoring contract; intake templates and their reader, called by `ritvo diagnose <dir>` with suggested fixes and `--fix`; inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; DoA import from the client's own matrix (`ritvo import-doa`); code and environment scan (`ritvo inspect --code`), including tools found in code and which agents reach them; repository hygiene and CI |
 | Specified, not built | Drafted answers; assisted drafting rules; the HTML inspect report |
 | Not started | Additive re-run; interview assistant; questionnaire init; the draft `ritvo.yaml` and gap report from `ritvo diagnose` |
 
@@ -189,3 +189,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | draft v0.7 | 23 October 2026 | DoA import specified (SPEC 8.4) and moved to "Specified, not built" in the phase 0 status (section 7): the client exports its own matrix as CSV; no Ritvo template to fill in. |
 | draft v0.8 | 23 October 2026 | DoA import moved to built in the phase 0 status (section 7). |
 | draft v0.9 | 23 October 2026 | Code and environment scan moved to built in the phase 0 status (section 7). |
+| draft v0.10 | 23 October 2026 | The code scan's tools and reach noted as built in the phase 0 status (section 7). |

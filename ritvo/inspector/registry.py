@@ -16,6 +16,7 @@ from ritvo.inspector.inventory import (
     Inventory,
     Manifest,
     RegistryExport,
+    Tool,
 )
 
 READERS: dict[str, Callable[[Path], ExportRead]] = {
@@ -81,6 +82,21 @@ def no_owner_findings(agents: list[Agent]) -> list[Finding]:
         for agent in agents
         if agent.owner is None
     ]
+
+
+def unowned_tool_findings(tools: list[Tool], agents: list[Agent]) -> list[Finding]:
+    """A high tier tool that no agent is known to reach, or that an agent with no owner reaches."""
+    owners = {agent.id: agent.owner for agent in agents}
+    findings = []
+    for tool in tools:
+        if tool.proposed_tier != "high":
+            continue
+        unowned = sorted(agent for agent in tool.reached_by if owners.get(agent) is None)
+        if unowned or not tool.reached_by:
+            findings.append(
+                Finding(rule="tool.destructive_unowned", subject=tool.id, agents=unowned)
+            )
+    return findings
 
 
 def agent_findings(agents: list[Agent]) -> list[Finding]:
