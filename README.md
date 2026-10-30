@@ -59,9 +59,74 @@ Record your agents, the tools they use and the people who own and approve them, 
 ritvo diagnose --templates intake/   # writes blank agents.csv, tools.csv and people.csv
 ```
 
-Fill them in with a spreadsheet; `examples/intake/` shows them filled in for a fictional organisation. An empty cell means not known. The command never overwrites a file. Filled-in templates are client data: keep them out of public repositories. The columns are in [docs/SPEC.md](docs/SPEC.md) section 8.2. The diagnostic that reads them is next.
+Fill them in with a spreadsheet; `examples/intake/` shows them filled in for a fictional organisation. An empty cell means not known. The command never overwrites a file. Filled-in templates are client data: keep them out of public repositories. The columns are in [docs/SPEC.md](docs/SPEC.md) section 8.2. How the templates fit with the other commands is in the workflow below.
 
-The quick start will cover `ritvo inspect` as it lands, and `ritvo demo` on `examples/mcp-demo` after that.
+## Workflow
+
+Every command below reads files and writes files. None connects to a platform or an MCP server, and nothing is sent anywhere. Inventories, intake files and answers for a real organisation are client data: keep them out of public repositories. Each command prints what it wrote. Run `ritvo <command> --help` for every option.
+
+The steps run in this order. Step 4 is optional.
+
+**1. Find what exists.** `ritvo inspect` reads one or more sources and writes `inventory.json`, with a manifest of every file it read. Sources can be combined in one run:
+
+```sh
+ritvo inspect --defaults                                      # MCP servers in the configs of Claude Code, Claude Desktop, Cursor and VS Code
+ritvo inspect --config cursor:path/to/mcp.json                # one config file
+ritvo inspect --code ./my-agents                              # Python source: agents, the tools they call, environment variable names
+ritvo inspect --registry agentcore:agentcore-runtimes.json    # a platform's agent export
+```
+
+Source is parsed, never run. `.env` files are never opened and environment values are never read. For a platform export, `ritvo inspect --help` lists the command that produces the file. The run prints how many agents have no owner, how many credential names are shared, and how many high tier tools are reached by an agent with no owner. The format is in [docs/SPEC.md](docs/SPEC.md) section 4.8 and the sources are in section 7.
+
+Add `--report` to any of these runs to also write `report.html` beside the inventory. It is built from the inventory alone and is one file that opens offline: a view each for the platform engineer, security, the policy owner and the auditor, and an all-views mode for printing. To make a report from an inventory you already have, run `ritvo inspect --inventory inventory.json --report`; the inventory is not changed. The report is described in [docs/SPEC.md](docs/SPEC.md) section 7.2.
+
+**2. Record who owns what.** Write the blank intake templates, fill them in, then check them:
+
+```sh
+ritvo diagnose --templates intake/    # blank agents.csv, tools.csv, people.csv
+ritvo diagnose intake/                # counts, and a suggested fix for each error
+ritvo diagnose intake/ --fix          # writes a corrected copy to intake/corrected/
+```
+
+`--fix` applies mechanical fixes only and never changes your files. The `agent_id` values in `agents.csv` must match the IDs in the inventory.
+
+**3. Merge the owners into the inventory.**
+
+```sh
+ritvo inspect --inventory inventory.json --owners intake/agents.csv --out inventory-owned.json
+```
+
+The inventory you name is never changed. Each owner set from the file is recorded in the manifest, and a row that matches no agent is reported and not used. The findings are worked out again.
+
+Add `--report` to write a report from the merged inventory.
+
+**4. Optional: read a delegation-of-authority matrix.** Export your own matrix as UTF-8 CSV, in a wide or long layout:
+
+```sh
+ritvo import-doa matrix.csv --intake intake/
+```
+
+It proposes how to read the sheet and asks you to confirm each answer, saves the answers to `matrix.mapping.yaml`, and writes `matrix.draft.yaml` with approval bands per tool and the roles that hold them. Later runs ask only about new rows; `--no-input` asks nothing. It never edits the matrix or any policy file. See [docs/SPEC.md](docs/SPEC.md) section 8.4.
+
+**5. Score the result.** Answer the 17 questions and run the gap review, as in the first section above:
+
+```sh
+ritvo review my-answers.yaml
+```
+
+The answers are typed by hand for now.
+
+To try steps 1 to 3 on fictional data from a clone:
+
+```sh
+ritvo inspect --registry agentcore:examples/inspect/agentcore-runtimes.json --report
+ritvo inspect --inventory inventory.json --owners examples/inspect/owners/agents.csv --out inventory-owned.json
+ritvo diagnose examples/intake
+```
+
+The first command writes `inventory.json` and `report.html`; open the report in a browser. The example owners file has one row that matches no agent, so the second command prints one warning.
+
+**Not built yet:** the draft `ritvo.yaml` and the gap report from `ritvo diagnose`, answers drafted from an inventory, `ritvo init`, `ritvo import`, comparing a report with a previous scan, PDF and redacted reports, and everything that enforces or approves (`ritvo demo`, `ritvo approve`). The phases are in [docs/PRD.md](docs/PRD.md) section 7.
 
 ## Getting help
 
