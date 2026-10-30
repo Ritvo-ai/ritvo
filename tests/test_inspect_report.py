@@ -157,7 +157,7 @@ def test_report_is_one_file_with_no_remote_resource() -> None:
     assert not re.search(r"<link\b|@import|url\(|<img\b|<iframe\b|fetch\(|XMLHttpRequest", html)
     assert "http://" not in html
     # Server and issuer URLs are shown as text only.
-    assert "https://idp.example.com" in html
+    assert re.search(re.escape("https://idp.example.com"), html)
     assert "font-family: var(--f-body)" in html
     assert "fonts.g" not in html
 
