@@ -332,6 +332,44 @@ def _check_unique(rows: list[tuple[_Row, str | None]], column: str) -> set[str]:
     return set(first)
 
 
+def _merge_people(rows: list[tuple[_Row, str | None, Person]]) -> tuple[Person, ...]:
+    """One person from each person_id. A person may repeat, one role or several on each row.
+
+    The rows of a person are merged: roles are joined, and a team or deputy given on more than
+    one row must be the same on each.
+    """
+    first: dict[str, tuple[int, Person]] = {}
+    merged: dict[str, Person] = {}
+    for row, key, person in rows:
+        if key is None:
+            continue
+        if key not in first:
+            first[key] = (row.line, person)
+            merged[key] = person
+            continue
+        line, _ = first[key]
+        current = merged[key]
+        team, deputy = current.team, current.deputy
+        for column, value, kept in (
+            ("team", person.team, current.team),
+            ("deputy", person.deputy, current.deputy),
+        ):
+            if value is None:
+                continue
+            if kept is None:
+                team, deputy = (value, deputy) if column == "team" else (team, value)
+            elif value != kept:
+                row.problem(column, f"{_short(value)} differs from {_short(kept)} on line {line}")
+        roles = list(current.roles or ())
+        for role in person.roles or ():
+            if role in roles:
+                row.problem("roles", f"{_short(role)} is already given for this person")
+            else:
+                roles.append(role)
+        merged[key] = Person(key, team, tuple(roles) or None, deputy)
+    return tuple(merged.values())
+
+
 def _load(directory: Path) -> tuple[Intake, _Problems, list[_Parsed]]:
     if not directory.is_dir():
         raise IntakeError(f"{directory} is not a directory")
@@ -403,7 +441,7 @@ def _load(directory: Path) -> tuple[Intake, _Problems, list[_Parsed]]:
 
     _check_unique([(row, key) for row, key, _ in agents], "agent_id")
     tool_ids = _check_unique([(row, key) for row, key, _ in tools], "tool_id")
-    person_ids = _check_unique([(row, key) for row, key, _ in people], "person_id")
+    person_ids = {key for _, key, _ in people if key is not None}
 
     # References into an absent file are not checked.
     if person_rows is not None:
@@ -429,7 +467,7 @@ def _load(directory: Path) -> tuple[Intake, _Problems, list[_Parsed]]:
     intake = Intake(
         agents=None if agent_rows is None else tuple(agent for _, _, agent in agents),
         tools=None if tool_rows is None else tuple(tool for _, _, tool in tools),
-        people=None if person_rows is None else tuple(person for _, _, person in people),
+        people=None if person_rows is None else _merge_people(people),
     )
     return intake, problems, list(parsed.values())
 

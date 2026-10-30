@@ -560,16 +560,22 @@ def test_cli_diagnose_valid_intake(tmp_path: Path) -> None:
     target = _intake(tmp_path)
     result = runner.invoke(app, ["diagnose", str(target)])
     assert result.exit_code == 0, result.output
-    assert result.output.splitlines() == [
+    assert result.output.splitlines()[:3] == [
         "agents.csv  4 agents, 2 with no owner",
         "tools.csv  6 tools, 2 with no tier",
         "people.csv  5 people",
-        "Nothing was written. The draft ritvo.yaml and the gap report are not built yet.",
     ]
     assert sorted(path.name for path in target.iterdir()) == [
         "agents.csv",
+        "diagnosis",
         "people.csv",
         "tools.csv",
+    ]
+    assert sorted(path.name for path in (target / "diagnosis").iterdir()) == [
+        "authority-matrix.csv",
+        "diagnosis.json",
+        "gap-report.html",
+        "ritvo.draft.yaml",
     ]
 
 

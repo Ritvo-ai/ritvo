@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -10,6 +11,7 @@ import typer
 from ritvo import __version__
 from ritvo.connectors.registry.common import RegistryError
 from ritvo.diagnostic.doa.draft import build_draft, draft_path, write_draft
+from ritvo.diagnostic.doa.draft import read_draft as read_doa_draft
 from ritvo.diagnostic.doa.mapping import (
     confirm_mapping,
     load_mapping,
@@ -18,9 +20,13 @@ from ritvo.diagnostic.doa.mapping import (
     save_mapping,
 )
 from ritvo.diagnostic.doa.matrix import DoaError, column_keys
+from ritvo.diagnostic.gaps.model import Input
+from ritvo.diagnostic.gaps.rules import RULES, Inputs
+from ritvo.diagnostic.gaps.rules import diagnose as run_diagnosis
 from ritvo.diagnostic.intake.columns import AGENTS, PEOPLE, TOOLS
 from ritvo.diagnostic.intake.reader import CORRECTED, Intake, IntakeError, fix_intake, load_intake
 from ritvo.diagnostic.intake.templates import write_templates
+from ritvo.diagnostic.report.write import DIAGNOSIS_DIR, write_diagnosis
 from ritvo.diagnostic.review.questions import LEVEL_LABELS
 from ritvo.diagnostic.review.report import write_report
 from ritvo.diagnostic.review.scoring import (
@@ -148,19 +154,43 @@ def diagnose(
             "The original files are never changed.",
         ),
     ] = False,
+    doa: Annotated[
+        Path | None,
+        typer.Option(
+            "--doa",
+            metavar="<file>",
+            dir_okay=False,
+            help="The <name>.draft.yaml that ritvo import-doa wrote, for approval bands.",
+        ),
+    ] = None,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            file_okay=False,
+            help="Where to write the draft ritvo.yaml, authority matrix, gap report and "
+            "diagnosis.json. Default: <folder>/diagnosis/.",
+        ),
+    ] = None,
 ) -> None:
     """Diagnose authority gaps from intake files. Reads files only."""
     if (intake is None) == (templates is None):
         _fail("give an intake folder, or --templates <dir>")
     if fix and intake is None:
         _fail("--fix needs an intake folder")
+    if intake is None and (doa is not None or out is not None):
+        _fail("--doa and --out need an intake folder")
+    if fix and (doa is not None or out is not None):
+        _fail("--fix cannot be combined with --doa or --out; it only writes a corrected copy")
+    if intake is not None and out is not None and _same_file(out, intake / CORRECTED):
+        _fail(f"--out cannot be {intake / CORRECTED}")
     try:
         if templates is not None:
             for path in write_templates(templates):
                 typer.echo(f"Wrote {path}")
         elif intake is not None:
-            _diagnose_intake(intake, fix)
-    except IntakeError as exc:
+            _diagnose_intake(intake, fix, doa, out)
+    except (IntakeError, DoaError, OSError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
 
@@ -170,7 +200,7 @@ def _problems(problems: tuple[str, ...]) -> None:
         typer.echo(f"error: {problem}", err=True)
 
 
-def _diagnose_intake(intake: Path, fix: bool) -> None:
+def _diagnose_intake(intake: Path, fix: bool, doa: Path | None, out: Path | None) -> None:
     if not any((intake / file.name).is_file() for file in (AGENTS, TOOLS, PEOPLE)):
         raise IntakeError(
             f"no intake files in {intake}; write blank ones with ritvo diagnose --templates <dir>"
@@ -194,7 +224,29 @@ def _diagnose_intake(intake: Path, fix: bool) -> None:
         typer.echo(line)
     if fix:
         typer.echo("Nothing to fix.")
-    typer.echo("Nothing was written. The draft ritvo.yaml and the gap report are not built yet.")
+        return
+    draft = read_doa_draft(doa) if doa is not None else None
+    target = out if out is not None else intake / DIAGNOSIS_DIR
+    if target.exists() and not target.is_dir():
+        raise IntakeError(f"{target} is not a folder; nothing was written")
+    files = [
+        intake / file.name for file in (AGENTS, TOOLS, PEOPLE) if (intake / file.name).is_file()
+    ]
+    if doa is not None:
+        files.append(doa)
+    inputs = Inputs(
+        result,
+        draft,
+        tuple(Input(file=path.name, sha256=sha256_of(path)) for path in files),
+    )
+    diagnosis = run_diagnosis(inputs, datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    written = write_diagnosis(diagnosis, target)
+    for rule in RULES:
+        mine = [finding for finding in diagnosis.findings if finding.rule == rule]
+        gaps = sum(1 for finding in mine if finding.level == "gap")
+        typer.echo(f"{rule:<20}  {gaps} gap, {len(mine) - gaps} not known")
+    for path in written:
+        typer.echo(f"Wrote {path}")
 
 
 def _write_corrected(intake: Path, error: IntakeError) -> None:

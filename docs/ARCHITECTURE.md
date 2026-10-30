@@ -29,7 +29,9 @@ ritvo/
   diagnostic/            files in, reports out
     review/              the 17-question authority gap review
     intake/              agents.csv, tools.csv, people.csv: columns, reader, templates
-    doa/                 delegation-of-authority matrix -> draft approval bands
+    doa/                 delegation-of-authority matrix -> draft approval bands; reads the draft back
+    gaps/                the diagnosis model and the eight gap rules
+    report/              what `ritvo diagnose` writes: draft ritvo.yaml, authority matrix, gap report
 tests/                   pytest; fixtures in tests/fixtures/
 examples/                fictional data for the README and the tests
 docs/                    PRD, SPEC, decision records, design sample
@@ -44,7 +46,8 @@ Every module opens with a docstring that names the spec section it implements. S
 | --- | --- | --- |
 | `ritvo review <answers.yaml>` | `cli/main.py: review` | `diagnostic/review/scoring.load_answers`, `score`, then `report.write_report` |
 | `ritvo diagnose --templates <dir>` | `diagnose` | `diagnostic/intake/templates.write_templates` |
-| `ritvo diagnose <dir> [--fix]` | `diagnose` | `diagnostic/intake/reader.load_intake`, `fix_intake` |
+| `ritvo diagnose <dir> --fix` | `diagnose` | `diagnostic/intake/reader.fix_intake` |
+| `ritvo diagnose <dir> [--doa <file>] [--out <dir>]` | `diagnose` | `load_intake`, `doa/draft.read_draft`, `gaps/rules.diagnose`, then `report/write.write_diagnosis` |
 | `ritvo import-doa <matrix.csv>` | `import_doa` | `diagnostic/doa/matrix` (read and propose), `mapping` (confirm and save), `draft` (build and write) |
 | `ritvo inspect ...` | `inspect` | see below |
 
@@ -77,6 +80,7 @@ cli/main.py ──► inspector/* ──► connectors/registry/*
 - `inspector/owners.py` is the one place the inspector uses the diagnostic: it reads `agents.csv` through `diagnostic/intake`.
 - `inspector/report.py` reads the models in `inspector/inventory.py` and the export commands in `inspector/registry.py` (`EXPORTS`). Nothing imports it except `cli/main.py`.
 - `diagnostic/review` stands alone. `diagnostic/doa` builds on `diagnostic/intake`.
+- `diagnostic/gaps` reads `intake` and `doa` and produces a `Diagnosis`. `diagnostic/report` reads only a `Diagnosis`: the draft, the matrix and the gap report are all built from it, never from the intake files, so what the report says is what `diagnosis.json` says.
 - Keep this direction. The design also forbids the inspector importing anything from the Governance OS, which does not exist yet.
 
 ## Conventions the code relies on
@@ -99,6 +103,7 @@ cli/main.py ──► inspector/* ──► connectors/registry/*
 | `test_review.py` | gap review questions, scoring contract, the review page, `ritvo review` |
 | `test_intake.py` | intake templates, reader, suggested fixes, `ritvo diagnose` |
 | `test_import_doa.py` | DoA matrix reading, mapping, draft, `ritvo import-doa` |
+| `test_diagnose_draft.py` | repeated people rows, reading a DoA draft, the eight gap rules, the draft `ritvo.yaml`, the matrix, the gap report, `ritvo diagnose` options and outputs |
 | `test_inspect.py` | inventory models, registry exports, findings, `ritvo inspect --registry` |
 | `test_inspect_config.py` | config discovery per client and operating system |
 | `test_inspect_code.py` | code scan: agents, tools, reach, environment names |
@@ -127,6 +132,7 @@ Run the checks in [CONTRIBUTING.md](../CONTRIBUTING.md) (`ruff check .`, `ruff f
 | A new action SDK in the code scan | `CATALOGUE` in `inspector/code.py` with its calls and proposed tier; SPEC 7.5 lists the catalogue; add a case to `test_inspect_code.py` |
 | A new agent framework or model SDK | `FRAMEWORKS` or `SDKS` in `inspector/code.py`; SPEC 7.5 |
 | An inventory field | the models in `inspector/inventory.py`; bump `SCHEMA_VERSION` and add the old version to `_OLD_VERSIONS`; every place that builds an inventory (`registry.py`, `config.py`, `code.py`, `owners.py`); SPEC 4.8 |
+| A new gap rule | add it to `Rule` in `gaps/model.py`; a check, the files it reads, its text and its basis in `gaps/rules.py` (`RULES`, `TITLES`, `_CHECKS`, `_READS`, `_WHY`, `_NEXT`); SPEC 8.5; a case in `test_diagnose_draft.py` |
 | An intake column | `diagnostic/intake/columns.py`, then `reader.py` and `templates.py`; SPEC 8.2; `examples/intake/` |
 | A review question | `diagnostic/review/questions.py`; SPEC 8.1; `examples/review/answers.yaml`; the question count in the README and tests |
 | A change to what the inspect report says or shows | `build` in `inspector/report.py` for the rules, `templates/report.html.j2` for the page; SPEC 7.2; a case in `test_inspect_report.py` |

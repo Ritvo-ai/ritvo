@@ -88,7 +88,7 @@ ritvo diagnose intake/                # counts, and a suggested fix for each err
 ritvo diagnose intake/ --fix          # writes a corrected copy to intake/corrected/
 ```
 
-`--fix` applies mechanical fixes only and never changes your files. The `agent_id` values in `agents.csv` must match the IDs in the inventory.
+`--fix` applies mechanical fixes only and never changes your files. The `agent_id` values in `agents.csv` must match the IDs in the inventory. A person who holds several roles can be listed on several rows of `people.csv`; the rows are merged.
 
 **3. Merge the owners into the inventory.**
 
@@ -108,7 +108,15 @@ ritvo import-doa matrix.csv --intake intake/
 
 It proposes how to read the sheet and asks you to confirm each answer, saves the answers to `matrix.mapping.yaml`, and writes `matrix.draft.yaml` with approval bands per tool and the roles that hold them. Later runs ask only about new rows; `--no-input` asks nothing. It never edits the matrix or any policy file. See [docs/SPEC.md](docs/SPEC.md) section 8.4.
 
-**5. Score the result.** Answer the 17 questions and run the gap review, as in the first section above:
+**5. Draft the policy and find the gaps.** With valid intake files, and the draft from step 4 if you have one:
+
+```sh
+ritvo diagnose intake/ --doa matrix.draft.yaml    # --doa is optional
+```
+
+It writes `intake/diagnosis/` (or the folder you give with `--out`) with four files: `ritvo.draft.yaml`, a partial draft that holds only what your files say; `authority-matrix.csv`, one row for each agent and tool; `gap-report.html`, one file that opens offline; and `diagnosis.json`, which the others are built from. Eight rules each report a known gap or *not known*, and an empty cell is never read as a gap. The draft proposes an ask for every tool except low tier, and approves nothing. The files are client data: keep them out of public repositories. See [docs/SPEC.md](docs/SPEC.md) section 8.5.
+
+**6. Score the result.** Answer the 17 questions and run the gap review, as in the first section above:
 
 ```sh
 ritvo review my-answers.yaml
@@ -116,17 +124,17 @@ ritvo review my-answers.yaml
 
 The answers are typed by hand for now.
 
-To try steps 1 to 3 on fictional data from a clone:
+To try steps 1 to 3 and 5 on fictional data from a clone:
 
 ```sh
 ritvo inspect --registry agentcore:examples/inspect/agentcore-runtimes.json --report
 ritvo inspect --inventory inventory.json --owners examples/inspect/owners/agents.csv --out inventory-owned.json
-ritvo diagnose examples/intake
+ritvo diagnose examples/intake --out diagnosis
 ```
 
-The first command writes `inventory.json` and `report.html`; open the report in a browser. The example owners file has one row that matches no agent, so the second command prints one warning.
+The first command writes `inventory.json` and `report.html`; open the report in a browser. The example owners file has one row that matches no agent, so the second command prints one warning. The third writes the four files of step 5 to `diagnosis/`.
 
-**Not built yet:** the draft `ritvo.yaml` and the gap report from `ritvo diagnose`, answers drafted from an inventory, `ritvo init`, `ritvo import`, comparing a report with a previous scan, PDF and redacted reports, and everything that enforces or approves (`ritvo demo`, `ritvo approve`). The phases are in [docs/PRD.md](docs/PRD.md) section 7.
+**Not built yet:** answers drafted from an inventory, `ritvo init`, `ritvo import`, comparing a report with a previous scan, PDF and redacted reports, and everything that enforces or approves (`ritvo demo`, `ritvo approve`). The phases are in [docs/PRD.md](docs/PRD.md) section 7.
 
 ## Getting help
 
