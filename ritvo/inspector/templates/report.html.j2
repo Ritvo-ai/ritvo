@@ -1,0 +1,495 @@
+{% macro shape(kind) %}
+{% if kind in ("ok", "low", "advertised", "local") %}
+<svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4.5" fill="currentColor"/></svg>
+{% elif kind in ("partial", "medium", "p2") %}
+<svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 10 9H0Z" fill="currentColor"/></svg>
+{% elif kind in ("gap", "high", "p1", "none") %}
+<svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 10 5 5 10 0 5Z" fill="currentColor"/></svg>
+{% else %}
+<svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 1.5"/></svg>
+{% endif %}
+{% endmacro %}
+{% macro tier(name) %}<span class="chip tier-{{ name }}">{{ shape(name) }}{{ name | capitalize }}</span>{% endmacro %}
+{% macro status(kind, label) %}<span class="chip st-{{ kind }}">{{ shape(kind) }}{{ label }}</span>{% endmacro %}
+{% macro priority(level) %}<span class="chip p-{{ level }}">{{ shape("p" ~ level) }}{{ "P1 Fix first" if level == 1 else "P2 Review" }}</span>{% endmacro %}
+{% macro panel_head(title, text) %}<div class="panel-head"><h2>{{ title }}</h2><p>{{ text }}</p></div>{% endmacro %}
+{% set m = inventory.manifest %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ritvo inspection report</title>
+<style>
+:root {
+  --bg: #F2F5F6; --surface: #FFFFFF; --ink: #12222C; --ink2: #44565F; --muted: #5A6B74;
+  --line: #D2DBDF; --line2: #E6ECEF;
+  --accent: #0B6B7C; --accent-ink: #FFFFFF;
+  --t-low: #CFE5EA; --t-low-ink: #12222C;
+  --t-med: #5BA3B3; --t-med-ink: #06202A;
+  --t-high: #0B4F63; --t-high-ink: #FFFFFF;
+  --p1: #B3261E; --p1-bg: #FBE9E7; --p2: #8F4C00; --p2-bg: #FCEFD9;
+  --ok: #276B43; --ok-bg: #E4F2EA; --unk: #6B7A82;
+  --f-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0E1A21; --surface: #15252E; --ink: #E6EEF1; --ink2: #B4C3CA; --muted: #8DA0A9;
+    --line: #2A3C46; --line2: #20313A;
+    --accent: #5EC0D1; --accent-ink: #0E1A21;
+    --t-low: #24505E; --t-low-ink: #E6EEF1;
+    --t-med: #3F8CA0; --t-med-ink: #05161C;
+    --t-high: #9ED6E4; --t-high-ink: #05161C;
+    --p1: #FF8A80; --p1-bg: #3A1E1D; --p2: #F2B35E; --p2-bg: #3A2B14;
+    --ok: #7FD1A0; --ok-bg: #173226; --unk: #8DA0A9;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55; padding: 16px 16px 56px; }
+.wrap { max-width: 1120px; margin-inline: auto; display: flex; flex-direction: column; gap: 24px; }
+h1, h2, h3 { margin: 0; line-height: 1.2; letter-spacing: -0.01em; }
+p { margin: 0; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+.num { font-variant-numeric: tabular-nums; }
+.dim { color: var(--muted); }
+.none { color: var(--p1); font-weight: 600; }
+
+.cover { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 32px; padding-block: 8px 24px; border-bottom: 2px solid var(--ink); }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+.cover h1 { font-size: clamp(30px, 5vw, 48px); font-weight: 700; line-height: 1.05; }
+.lede { margin-top: 16px; font-size: 17px; max-width: 52ch; color: var(--ink2); }
+.meta { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 16px; row-gap: 6px; align-content: start; font-size: 13px; }
+.meta dt { color: var(--muted); font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; padding-top: 2px; }
+.meta dd { margin: 0; font-family: var(--f-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+
+.readings { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--line); background: var(--surface); }
+.reading { padding: 16px 18px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.reading:first-child { border-left: 0; }
+.reading .k { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.reading .v { font-size: 34px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.reading .s { font-size: 13px; color: var(--ink2); }
+
+.switcher { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-block: 8px; display: flex; gap: 6px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+.switcher[hidden] { display: none; }
+.switcher button { font: inherit; font-weight: 600; font-size: 14px; color: var(--ink2); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; cursor: pointer; white-space: nowrap; }
+.switcher button:hover { border-color: var(--accent); color: var(--ink); }
+.switcher button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+main { display: flex; flex-direction: column; gap: 48px; }
+.panel { display: flex; flex-direction: column; gap: 32px; }
+.panel[hidden] { display: none; }
+.panel-head { display: grid; gap: 6px; }
+.panel-head h2 { font-size: 26px; font-weight: 700; }
+.panel-head p { color: var(--ink2); max-width: 70ch; }
+.block { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.block h3 { font-size: 17px; font-weight: 600; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.block h3 small { font-weight: 400; font-size: 13px; color: var(--muted); }
+.twocol { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th { text-align: left; font-family: var(--f-mono); font-weight: 500; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--surface); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--line2); vertical-align: top; min-width: 0; overflow-wrap: anywhere; }
+tr:last-child td { border-bottom: 0; }
+td.id { font-family: var(--f-mono); font-size: 12.5px; }
+.matrix td, .matrix th { text-align: center; }
+.matrix td:first-child, .matrix th:first-child { text-align: left; }
+.matrix .no { color: var(--muted); }
+.empty { padding: 14px 16px; color: var(--ink2); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 4px; white-space: nowrap; line-height: 1.5; }
+.ico { width: 10px; height: 10px; display: inline-block; flex: none; }
+.tier-low { background: var(--t-low); color: var(--t-low-ink); }
+.tier-medium { background: var(--t-med); color: var(--t-med-ink); }
+.tier-high { background: var(--t-high); color: var(--t-high-ink); }
+.tier-unknown { background: var(--surface); color: var(--ink2); border: 1px dashed var(--unk); }
+.p-1, .st-gap { background: var(--p1-bg); color: var(--p1); }
+.p-2, .st-partial { background: var(--p2-bg); color: var(--p2); }
+.st-ok { background: var(--ok-bg); color: var(--ok); }
+.st-na { background: var(--line2); color: var(--ink2); }
+.flags { display: flex; gap: 4px; flex-wrap: wrap; }
+.flag { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; color: var(--ink2); }
+.flag.d { border-color: var(--p1); color: var(--p1); }
+
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink2); }
+.bars { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 14px; align-items: center; }
+.bars .lab { font-family: var(--f-mono); font-size: 12.5px; }
+.bar { display: flex; gap: 2px; min-width: 0; }
+.seg { border-radius: 3px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 2px 8px; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar.unins { border: 1px dashed var(--unk); border-radius: 3px; padding: 2px 8px; font-size: 12px; color: var(--ink2); }
+
+.findings { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.finding { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 4px 20px; padding: 16px 18px; border-bottom: 1px solid var(--line2); }
+.finding:last-child { border-bottom: 0; }
+.finding .rule { font-family: var(--f-mono); font-size: 12.5px; }
+.finding .subj { font-family: var(--f-mono); font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.finding dl { margin: 8px 0 0; display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 4px 12px; font-size: 13.5px; }
+.finding dt { color: var(--muted); font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; }
+.finding dd { margin: 0; }
+
+.filter { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter[hidden] { display: none; }
+.filter button { font: inherit; font-size: 13px; font-weight: 600; background: var(--surface); color: var(--ink2); border: 1px solid var(--line); border-radius: 4px; padding: 4px 12px; cursor: pointer; }
+.filter button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.steps { margin: 0; padding: 0; list-style: none; display: grid; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.steps li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line2); align-items: start; }
+.steps li:last-child { border-bottom: 0; }
+.box { width: 16px; height: 16px; border: 1.5px solid var(--ink2); border-radius: 3px; margin-top: 3px; }
+.who { font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); white-space: nowrap; padding-top: 3px; }
+pre { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; overflow-x: auto; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.6; }
+.note { font-size: 13.5px; color: var(--ink2); border-left: 3px solid var(--line); padding-left: 12px; max-width: 78ch; }
+ul.note { margin: 0; padding-left: 28px; display: grid; gap: 6px; }
+.sign { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.sign div { border-top: 1px solid var(--ink2); padding-top: 6px; font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); min-height: 48px; }
+.foot { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; display: flex; gap: 8px 24px; flex-wrap: wrap; justify-content: space-between; }
+
+@media (max-width: 820px) {
+  .cover { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .readings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reading:nth-child(3) { border-left: 0; }
+  .reading:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .twocol { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .finding { grid-template-columns: minmax(0, 1fr); }
+  .sign { grid-template-columns: minmax(0, 1fr); }
+  .steps li { grid-template-columns: 22px minmax(0, 1fr); }
+  .steps .who { grid-column: 2; padding-top: 0; }
+}
+
+@page { size: A4; margin: 12mm; }
+@media print {
+  :root {
+    --bg: #FFFFFF; --surface: #FFFFFF; --ink: #12222C; --ink2: #44565F; --muted: #5A6B74;
+    --line: #C5CFD4; --line2: #E1E7EA;
+    --accent: #0B6B7C; --accent-ink: #FFFFFF;
+    --t-low: #CFE5EA; --t-low-ink: #12222C; --t-med: #5BA3B3; --t-med-ink: #06202A;
+    --t-high: #0B4F63; --t-high-ink: #FFFFFF;
+    --p1: #B3261E; --p1-bg: #FBE9E7; --p2: #8F4C00; --p2-bg: #FCEFD9;
+    --ok: #276B43; --ok-bg: #E4F2EA; --unk: #6B7A82;
+  }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { padding: 0; font-size: 10.5pt; }
+  .switcher, .filter { display: none !important; }
+  .panel[hidden] { display: flex !important; }
+  .panel { break-before: page; }
+  tr, .finding, .steps li { break-inside: avoid; }
+  .tablewrap { overflow: visible; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="cover">
+    <div>
+      <p class="eyebrow">Ritvo · Agent authority inspection</p>
+      <h1>What agents can reach, and who is accountable</h1>
+      <p class="lede">{{ lede }}</p>
+    </div>
+    <dl class="meta">
+      <dt>Scanned</dt><dd>{{ inventory.generated_at }}</dd>
+      <dt>Tool</dt><dd>{{ inventory.tool }}</dd>
+      <dt>Scope</dt><dd>{{ m.paths | length }} paths · {{ m.files_read }} files read</dd>
+      <dt>Inventory</dt><dd>sha256 {{ sha256 }}</dd>
+    </dl>
+  </header>
+
+  <section class="readings" aria-label="Summary">
+    {% for reading in readings %}
+    <div class="reading"><span class="k">{{ reading.label }}</span><span class="v">{{ reading.value }}</span><span class="s">{{ reading.note }}</span></div>
+    {% endfor %}
+  </section>
+
+  <nav class="switcher" id="switcher" role="tablist" aria-label="Read this report as" hidden></nav>
+
+  <main>
+    <section class="panel" id="panel-engineer" data-label="Platform engineer" role="tabpanel" aria-labelledby="tab-engineer">
+      {{ panel_head("For the platform engineer", "What exists, how each server authenticates, which tools it exposes and the tier each tool would start at. Use it to decide what to wrap first.") }}
+      <div class="block">
+        <h3>Tools per server, by proposed tier</h3>
+        {% if servers %}
+        <div class="legend" aria-label="Legend"><span>{{ tier("low") }} read-only</span><span>{{ tier("medium") }} writes</span><span>{{ tier("high") }} destructive</span><span>{{ tier("unknown") }} no tier proposed</span></div>
+        <div class="bars">
+          {% for server in servers %}
+          <span class="lab">{{ server.id }}</span>
+          {% if not server.inspected %}
+          <div class="bar unins">Not inspected: tools unknown</div>
+          {% else %}
+          <div class="bar">
+            {% for name in (tiers + ("unknown",)) %}{% if server.mix[name] %}<div class="seg tier-{{ name }}">{{ shape(name) }}{{ name | capitalize }} {{ server.mix[name] }}</div>{% endif %}{% endfor %}
+            {% if not server.tools %}<span class="dim">No tools listed</span>{% endif %}
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty">No MCP servers were found.</p>
+        {% endif %}
+      </div>
+      <div class="block">
+        <h3>Servers <small>{{ servers | length - uninspected }} of {{ servers | length }} inspected</small></h3>
+        {% if servers %}
+        <div class="tablewrap" tabindex="0"><table>
+          <thead><tr><th>Server</th><th>Transport</th><th>Authorization</th><th>Tools</th><th>Suggested order</th></tr></thead>
+          <tbody>
+          {% for server in servers %}
+          <tr><td class="id">{{ server.id }}</td><td>{{ server.transport }}</td>
+            <td>{% if server.auth_kind == "none" %}<span class="none">{{ server.auth }}</span>{% elif server.auth_kind in ("unknown", "local") %}<span class="dim">{{ server.auth }}</span>{% else %}{{ server.auth }}{% endif %}</td>
+            <td class="num">{{ server.tools if server.tools is not none else "unknown" }}</td><td>{{ server.order }}</td></tr>
+          {% endfor %}
+          </tbody></table></div>
+        {% else %}
+        <p class="empty">No MCP servers were found.</p>
+        {% endif %}
+      </div>
+      <div class="block">
+        <h3>Tools <small>Tiers come from tool annotations or the code catalogue and are proposals only</small></h3>
+        {% if tools %}
+        <div class="filter" id="tierfilter" hidden><button type="button" aria-pressed="true" data-f="all">All {{ tools | length }}</button>{% for name in (tiers | reverse | list) + ["unknown"] %}<button type="button" aria-pressed="false" data-f="{{ name }}">{{ name | capitalize }}</button>{% endfor %}</div>
+        <div class="tablewrap" tabindex="0"><table>
+          <thead><tr><th>Server</th><th>Tool</th><th>Annotations</th><th>Proposed tier</th></tr></thead>
+          <tbody>
+          {% for tool in tools %}
+          <tr data-tier="{{ tool.tier }}"><td class="id">{{ tool.origin }}</td><td class="id">{{ tool.name }}</td>
+            <td><div class="flags">{% if tool.source == "code" %}<span class="flag">found in code</span>{% else %}{% for name, value in tool.flags %}<span class="flag{{ ' d' if name == 'destructive' and value }}">{{ name }}: {{ "yes" if value else ("no" if value is not none else "unknown") }}</span>{% endfor %}{% endif %}</div></td>
+            <td>{{ tier(tool.tier) }}</td></tr>
+          {% endfor %}
+          </tbody></table></div>
+        {% else %}
+        <p class="empty">No tools were found. Tools from MCP servers appear once a server is inspected.</p>
+        {% endif %}
+      </div>
+      <div class="twocol">
+        <div class="block">
+          <h3>Where this came from</h3>
+          <div class="tablewrap" tabindex="0"><table>
+            <thead><tr><th>Path read or checked</th></tr></thead>
+            <tbody>{% for path in m.paths %}<tr><td class="id">{{ path }}</td></tr>{% else %}<tr><td class="dim">None</td></tr>{% endfor %}</tbody></table></div>
+        </div>
+        <div class="block">
+          <h3>Next</h3>
+<pre>ritvo inspect --inventory inventory.json --owners agents.csv --report</pre>
+          <p class="note">Sets owners from an intake file and writes this report again. Import into a draft change request arrives in a later phase; nothing changes in <code>ritvo.yaml</code> until the owning teams sign it off.</p>
+          {% if exports %}
+          <p class="note">To add agents from a platform registry, export its list first:</p>
+          {% for export in exports %}
+<pre>{{ export.platform }}:
+{% for command in export.commands %}    {{ command }}
+{% endfor %}</pre>
+          {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-security" data-label="Security" role="tabpanel" aria-labelledby="tab-security">
+      {{ panel_head("For security", "What can be reached, what shows no authorization and what runs local code. Priority ranks by what an agent or server can reach. It is not a measure of exploitability.") }}
+      <div class="block">
+        <h3>Findings <small>{{ findings | length }} · {{ p1 }} fix first</small></h3>
+        {% if findings %}
+        <div class="findings">
+          {% for finding in findings %}
+          <div class="finding"><div>{{ priority(finding.priority) }}</div><div>
+            <div class="rule dim">{{ finding.rule }}</div><div class="subj">{{ finding.subject }}</div>
+            <dl><dt>Saw</dt><dd>{{ finding.saw }}</dd><dt>Why</dt><dd>{{ finding.why }}</dd><dt>Next</dt><dd>{{ finding.next }}</dd></dl>
+          </div></div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty">No findings. That means the rules found nothing in what was read, not that nothing is wrong.</p>
+        {% endif %}
+      </div>
+      <div class="twocol">
+        <div class="block">
+          <h3>Servers that run local code</h3>
+          {% if stdio %}
+          <div class="tablewrap" tabindex="0"><table>
+            <thead><tr><th>Server</th><th>Command</th><th>Started by the scan</th></tr></thead>
+            <tbody>{% for server in stdio %}<tr><td class="id">{{ server.id }}</td><td class="id">{{ server.target }}</td><td>{{ "Yes, with consent" if server.inspected else "No" }}</td></tr>{% endfor %}</tbody></table></div>
+          <p class="note">Starting a stdio server runs its command. The inspector only does so with <code>--connect</code> and a yes for each server. Run it in a sandbox where you can.</p>
+          {% else %}
+          <p class="empty">No stdio servers were found.</p>
+          {% endif %}
+        </div>
+        <div class="block">
+          <h3>Scopes advertised by HTTP servers</h3>
+          {% if http %}
+          <div class="tablewrap" tabindex="0"><table>
+            <thead><tr><th>Server</th><th>Scopes</th></tr></thead>
+            <tbody>{% for server in http %}<tr><td class="id">{{ server.id }}</td><td class="id">{% if server.scopes is none %}<span class="dim">unknown: not inspected</span>{% elif server.scopes %}{{ server.scopes | join(", ") }}{% else %}<span class="none">none advertised</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+          {% if inventory.identity.issuers %}<p class="note">Issuers found: <code>{{ inventory.identity.issuers | join(", ") }}</code>.</p>{% endif %}
+          {% else %}
+          <p class="empty">No HTTP servers were found.</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="block">
+        <h3>Credential names seen <small>Names only. Values were never read.</small></h3>
+        {% if credentials %}
+        <div class="tablewrap" tabindex="0"><table>
+          <thead><tr><th>Name</th><th>Used by</th></tr></thead>
+          <tbody>{% for credential in credentials %}<tr><td class="id">{{ credential.name }}</td><td>{% if credential.agents %}{{ credential.agents | join(", ") }}{% else %}<span class="dim">not tied to an agent</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+        {% else %}
+        <p class="empty">No credential names were seen.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel" id="panel-owner" data-label="Policy owner" role="tabpanel" aria-labelledby="tab-owner">
+      {{ panel_head("For the policy owner", "Who owns what, how far each agent is known to reach, and the decisions only you can make. Reach is what the scan could see. Actual use may be narrower, and reach it could not see is shown as unknown.") }}
+      <div class="block">
+        <h3>Decisions needed</h3>
+        {% if decisions %}
+        <ul class="steps">
+          {% for decision in decisions %}<li><span class="box" aria-hidden="true"></span><span>{{ decision.text }}</span><span class="who">{{ decision.who }}</span></li>{% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty">No decisions follow from what was read.</p>
+        {% endif %}
+      </div>
+      <div class="block">
+        <h3>Agents and owners</h3>
+        {% if agents %}
+        <div class="tablewrap" tabindex="0"><table>
+          <thead><tr><th>Agent</th><th>Owner</th><th>Framework</th><th>High-tier tools known</th><th>Highest tier known</th></tr></thead>
+          <tbody>
+          {% for agent in agents %}
+          <tr><td class="id">{{ agent.id }}</td>
+            <td>{% if agent.owner %}{{ agent.owner }}{% if agent.team %} <span class="dim">· {{ agent.team }}</span>{% endif %}{% else %}<span class="none">No owner</span>{% endif %}</td>
+            <td>{{ agent.framework or "unknown" }}</td><td class="num">{{ agent.high }}</td>
+            <td>{{ tier(agent.highest) }}{% if agent.unknown_tiers and agent.highest != "unknown" %} <span class="dim">+ unknown</span>{% endif %}</td></tr>
+          {% endfor %}
+          </tbody></table></div>
+        {% else %}
+        <p class="empty">No agents were found.</p>
+        {% endif %}
+      </div>
+      <div class="block">
+        <h3>What each agent can reach <small>Tier of each tool found in code</small></h3>
+        {% if matrix.columns %}
+        <div class="tablewrap" tabindex="0"><table class="matrix">
+          <thead><tr><th>Agent</th>{% for column in matrix.columns %}<th>{{ column }}</th>{% endfor %}</tr></thead>
+          <tbody>
+          {% for row in matrix.rows %}
+          <tr><td class="id">{{ row.agent }}</td>{% for cell in row.cells %}<td>{% if cell %}{{ tier(cell) }}{% else %}<span class="no">not known to reach</span>{% endif %}</td>{% endfor %}</tr>
+          {% endfor %}
+          </tbody></table></div>
+        {% else %}
+        <p class="empty">No tool found in code is reached by an agent.</p>
+        {% endif %}
+        <p class="note">Which agent uses which MCP server is not recorded in this version of the inventory, so reach to MCP servers is unknown, not absent.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-auditor" data-label="Auditor" role="tabpanel" aria-labelledby="tab-auditor">
+      {{ panel_head("For the auditor", "What was read, what was not, what changed since the last scan, and where the evidence stands against common control areas.") }}
+      <div class="twocol">
+        <div class="block">
+          <h3>Scope and method</h3>
+          <div class="tablewrap" tabindex="0"><table>
+            <thead><tr><th>Item</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Tool</td><td class="num">{{ inventory.tool }}</td></tr>
+              <tr><td>Scanned</td><td class="num">{{ inventory.generated_at }}</td></tr>
+              <tr><td>Paths read or checked</td><td class="num">{{ m.paths | length }}</td></tr>
+              <tr><td>Files read</td><td class="num">{{ m.files_read }}</td></tr>
+              <tr><td>Files that could not be read</td><td class="num">{{ m.unreadable | length }}</td></tr>
+              <tr><td>Servers contacted</td><td class="num">{{ m.servers_contacted | length }}{% if m.servers_contacted %}: {{ m.servers_contacted | join(", ") }}{% endif %}</td></tr>
+              <tr><td>Registry exports read</td><td class="num">{% for export in m.registry_exports %}{{ export.platform }} ({{ export.agents }} agents, sha256 {{ export.sha256[:12] }}){% if not loop.last %}; {% endif %}{% else %}0{% endfor %}</td></tr>
+              <tr><td>Owner fields set from an overlay</td><td class="num">{{ m.owner_overlays | length }}</td></tr>
+              <tr><td>Environment names seen</td><td class="num">{{ m.env_names_seen | length }} · names only</td></tr>
+              <tr><td>Inventory hash</td><td class="num"><code>sha256 {{ sha256 }}</code></td></tr>
+            </tbody></table></div>
+          {% if m.unreadable %}
+          <p class="note">Could not be read: {{ m.unreadable | join(", ") }}</p>
+          {% endif %}
+        </div>
+        <div class="block">
+          <h3>What this report does not show</h3>
+          <ul class="note">
+            <li>Runtime traffic or what any agent actually called.</li>
+            <li>Permissions inside a server beyond what it advertises.</li>
+            <li>Approvals or bindings. None exist yet.</li>
+            {% for server in servers if not server.inspected %}<li>Tools on {{ server.id }}, which was not inspected.</li>{% endfor %}
+            <li>Which agent uses which MCP server.</li>
+            <li>Whether a named owner is the right person. Owners come from files, not HR records.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="block">
+        <h3>Changed since the previous scan</h3>
+        <p class="empty">Not compared. No previous inventory was given.</p>
+      </div>
+      <div class="block">
+        <h3>Starter control mapping</h3>
+        <div class="tablewrap" tabindex="0"><table>
+          <thead><tr><th>Control area</th><th>Evidence in this report</th><th>Status</th></tr></thead>
+          <tbody>
+          {% for control in controls %}
+          <tr><td>{{ control.area }}</td><td>{{ control.evidence }}</td><td>{{ status(control.status, {"ok": "Evidence found", "partial": "Partial", "gap": "Gap", "na": "Not assessed"}[control.status]) }}</td></tr>
+          {% endfor %}
+          </tbody></table></div>
+        <p class="note">A starting point for NIST AI RMF, ISO/IEC 42001 and EU AI Act Article 26 deployer duties. Review it with your compliance lead. It is not a conformity assessment.</p>
+      </div>
+      <div class="sign"><div>Prepared by</div><div>Reviewed by</div><div>Date</div></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Generated on this machine by <code>ritvo inspect</code> {{ version }}. Nothing was uploaded, and this file makes no network requests.</span>
+    <span>Findings are facts from files and tool metadata, not security verdicts. Unknown means not known, never safe.</span>
+  </footer>
+</div>
+<script>
+(function () {
+  var switcher = document.getElementById("switcher");
+  var panels = Array.prototype.slice.call(document.querySelectorAll(".panel"));
+  var keys = panels.map(function (p) { return p.id.replace("panel-", ""); }).concat(["all"]);
+  var labels = panels.map(function (p) { return p.getAttribute("data-label"); }).concat(["All, for print"]);
+  keys.forEach(function (key, i) {
+    var b = document.createElement("button");
+    b.type = "button"; b.id = "tab-" + key; b.setAttribute("role", "tab");
+    b.setAttribute("data-key", key); b.textContent = labels[i];
+    if (key !== "all") b.setAttribute("aria-controls", "panel-" + key);
+    switcher.appendChild(b);
+  });
+  var tabs = Array.prototype.slice.call(switcher.querySelectorAll("button"));
+  function show(key, focus) {
+    if (keys.indexOf(key) < 0) key = keys[0];
+    panels.forEach(function (p) { p.hidden = !(key === "all" || p.id === "panel-" + key); });
+    tabs.forEach(function (t) {
+      var on = t.getAttribute("data-key") === key;
+      t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1;
+      if (on && focus) t.focus();
+    });
+  }
+  switcher.addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-key]");
+    if (b) { show(b.getAttribute("data-key")); location.hash = b.getAttribute("data-key"); }
+  });
+  switcher.addEventListener("keydown", function (e) {
+    var i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    var next = { ArrowRight: (i + 1) % tabs.length, ArrowLeft: (i + tabs.length - 1) % tabs.length, Home: 0, End: tabs.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault(); show(keys[next], true);
+  });
+  switcher.hidden = false;
+  show((location.hash || "").slice(1));
+
+  var filter = document.getElementById("tierfilter");
+  if (filter) {
+    filter.hidden = false;
+    filter.addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-f]");
+      if (!b) return;
+      var f = b.getAttribute("data-f");
+      filter.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+      document.querySelectorAll("tr[data-tier]").forEach(function (r) { r.hidden = !(f === "all" || r.getAttribute("data-tier") === f); });
+    });
+  }
+})();
+</script>
+</body>
+</html>
