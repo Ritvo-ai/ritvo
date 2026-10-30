@@ -30,6 +30,8 @@ pre-commit install
 
 This installs both the pre-commit hooks (ruff, gitleaks, end-of-file fixer) and the `commit-msg` hook that checks commit messages and sign-off.
 
+A map of the code, how the commands flow and where a common change goes is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Running the checks
 
 ```sh
