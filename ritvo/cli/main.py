@@ -44,6 +44,8 @@ from ritvo.inspector.config import (
 from ritvo.inspector.inventory import InventoryError, load_inventory, write_inventory
 from ritvo.inspector.owners import OverlayError, apply_overlay, read_overlay
 from ritvo.inspector.registry import EXPORTS, FileResult, inspect_registry, parse_source
+from ritvo.inspector.report import sha256_of
+from ritvo.inspector.report import write_report as write_inspect_report
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 
@@ -300,6 +302,12 @@ _EXPORTS_HELP = "\n\n".join(
 )
 
 
+def _given(ctx: typer.Context, name: str) -> bool:
+    """Whether an option was typed on the command line, not left at its default."""
+    source = ctx.get_parameter_source(name)
+    return source is not None and source.name == "COMMANDLINE"
+
+
 def _fail(message: str) -> NoReturn:
     typer.echo(f"error: {message}", err=True)
     typer.echo("Nothing was written.", err=True)
@@ -316,6 +324,7 @@ def _same_file(a: Path, b: Path) -> bool:
     epilog=f"Export each file with the platform's own tool first:\n\n{_EXPORTS_HELP}",
 )
 def inspect(
+    ctx: typer.Context,
     registry: Annotated[
         list[str] | None,
         typer.Option(
@@ -375,6 +384,14 @@ def inspect(
             help="An existing inventory to apply --owners to. It is never changed.",
         ),
     ] = None,
+    report: Annotated[
+        bool,
+        typer.Option(
+            "--report",
+            help="Also write report.html beside the inventory, built from the inventory "
+            "alone (SPEC 7.2). With --inventory and no --owners, only the report is written.",
+        ),
+    ] = False,
     out: Annotated[
         Path,
         typer.Option("--out", dir_okay=False, help="Where to write the inventory."),
@@ -384,18 +401,24 @@ def inspect(
     reads_configs = defaults or bool(config)
     if (registry or reads_configs or code) and inventory is not None:
         _fail("--inventory cannot be combined with --registry, --code, --defaults or --config")
-    if inventory is not None and owners is None:
-        _fail("--inventory needs --owners")
+    if inventory is not None and owners is None and not report:
+        _fail("--inventory needs --owners or --report")
+    if inventory is not None and owners is None and _given(ctx, "out"):
+        _fail(
+            "--out cannot be used with --inventory and --report alone; "
+            "the report is written beside the inventory"
+        )
     if project is not None and not defaults:
         _fail("--project needs --defaults")
     if not registry and not reads_configs and not code and inventory is None:
         _fail(
             "give at least one --registry <platform>:<file>, --code <dir>, --defaults or "
-            "--config <client>:<file>, or --inventory <file> with --owners <agents.csv>"
+            "--config <client>:<file>, or --inventory <file> with --owners <agents.csv> "
+            "or --report"
         )
     if code and is_inside(out, code):
         _fail(f"--out {out} is inside a --code folder; write the inventory outside it")
-    if inventory is not None and _same_file(inventory, out):
+    if inventory is not None and owners is not None and _same_file(inventory, out):
         _fail(f"--out {out} is the file named by --inventory; choose another path")
     try:
         overlay = read_overlay(owners) if owners is not None else None
@@ -450,7 +473,9 @@ def inspect(
         typer.echo(f"warning: {key}: not checked, APPDATA is not set", err=True)
     for warning in warnings:
         typer.echo(f"warning: {warning}", err=True)
-    write_inventory(result, out)
+    rewrites = inventory is None or owners is not None
+    if rewrites:
+        write_inventory(result, out)
     width = max((len(file.platform) for file in files), default=0)
     for file in files:
         typer.echo(f"{file.platform:<{width}}  {file.agents} agents  {file.path}")
@@ -472,4 +497,10 @@ def inspect(
     for rule in (_NO_OWNER, _SHARED, _UNOWNED_TOOL):
         count = sum(1 for finding in result.findings if finding.rule == rule)
         typer.echo(f"{rule}: {count} ({_FINDING_TEXT[rule]})")
-    typer.echo(f"Wrote {out}")
+    if rewrites:
+        typer.echo(f"Wrote {out}")
+    if report:
+        source = out if rewrites or inventory is None else inventory
+        report_file = source.with_name("report.html")
+        write_inspect_report(load_inventory(source), sha256_of(source), report_file)
+        typer.echo(f"Wrote {report_file}")

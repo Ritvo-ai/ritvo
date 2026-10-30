@@ -1,6 +1,6 @@
 # Ritvo — Product Requirements (PRD)
 
-Status: draft v0.10 · 23 October 2026 · Owner: SK · Licence: Apache-2.0
+Status: draft v0.11 · 29 October 2026 · Owner: SK · Licence: Apache-2.0
 
 ## 1. Summary
 
@@ -135,8 +135,8 @@ Status of phase 0:
 
 | State | Items |
 | --- | --- |
-| Built | `ritvo review` with the scoring contract; intake templates and their reader, called by `ritvo diagnose <dir>` with suggested fixes and `--fix`; inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; DoA import from the client's own matrix (`ritvo import-doa`); code and environment scan (`ritvo inspect --code`), including tools found in code and which agents reach them; repository hygiene and CI |
-| Specified, not built | Drafted answers; assisted drafting rules; the HTML inspect report |
+| Built | `ritvo review` with the scoring contract; intake templates and their reader, called by `ritvo diagnose <dir>` with suggested fixes and `--fix`; inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; DoA import from the client's own matrix (`ritvo import-doa`); code and environment scan (`ritvo inspect --code`), including tools found in code and which agents reach them; the HTML inspect report from one inventory (`ritvo inspect --report`); repository hygiene and CI |
+| Specified, not built | Drafted answers; assisted drafting rules; the report's comparison with a previous scan, PDF and redaction (phase 1) |
 | Not started | Additive re-run; interview assistant; questionnaire init; the draft `ritvo.yaml` and gap report from `ritvo diagnose` |
 
 Where a person is still asked, by phase:
@@ -190,3 +190,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | draft v0.8 | 23 October 2026 | DoA import moved to built in the phase 0 status (section 7). |
 | draft v0.9 | 23 October 2026 | Code and environment scan moved to built in the phase 0 status (section 7). |
 | draft v0.10 | 23 October 2026 | The code scan's tools and reach noted as built in the phase 0 status (section 7). |
+| draft v0.11 | 29 October 2026 | The HTML inspect report from one inventory moved to built in the phase 0 status (section 7). |
