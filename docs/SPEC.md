@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.14-draft · 29 October 2026 · Licence: Apache-2.0
+Version 0.15-draft · 30 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -776,7 +776,7 @@ answers:
   # questions left out are not_answered
 basis:                                # optional, per question; see Provenance
   agents.inventory:
-    source: derived                   # derived | observed | asserted
+    source: derived                   # observed | derived | documented | asserted
     evidence: inventory.json sha256:<hash>   # a reference, never a value
 notes:                                # optional, one line per question
   agents.owner: Finance agents have owners; support agents do not.
@@ -789,11 +789,11 @@ Scoring, per area:
 1. If no question in the area is answered, the area is `not_answered`.
 2. Otherwise the area takes the lowest level among its answered questions, in the order above: one gap makes the area a gap, and one `needs_validation` keeps it from being better than `needs_validation`.
 3. If some questions in the area are unanswered, the area cannot be `in_place`: it is capped at `partial` and marked incomplete with the number answered.
-4. If every answered question in the area has a basis of `asserted`, the area cannot be `in_place`: it is capped at `partial`, and the result says why. An answer with no `basis` is `asserted`. The cap applies to the area; each question keeps its own level.
+4. If no answered question in the area has a basis of `observed` or `derived`, that is, every answered question is `documented` or `asserted`, the area cannot be `in_place`: it is capped at `partial`, and the result says why. An answer with no `basis` is `asserted`. The cap applies to the area; each question keeps its own level.
 
-There is no total score across areas. Each area also shows its evidence coverage: how many of its questions have a `basis` of `derived` or `observed`, out of the questions in the area. Coverage is a count, not a score.
+There is no total score across areas. Each area also shows its evidence coverage: how many of its questions have a `basis` of `derived` or `observed`, out of the questions in the area. A `documented` answer is not counted. Coverage is a count, not a score.
 
-Provenance. `basis` records where an answer came from. `derived` means read from a file or registry export, `observed` means taken from logs or records, `asserted` means a person said so. `evidence` is a reference, such as the SHA-256 of `inventory.json` and a `manifest.registry_exports` entry, and MUST NOT contain a value from a file, a credential value, or any secret. The name `basis` is used so it is not confused with `agents[].source`, which says how an agent was discovered.
+Provenance. `basis` records where an answer came from. `derived` means read from a file or registry export, `observed` means taken from logs or records, `documented` means the answer rests on a document a person supplied, such as a policy or a delegation-of-authority matrix, and `asserted` means a person said so. From strongest to weakest the bases are `observed`, `derived`, `documented`, `asserted`. Both bases that a machine reads outrank a document, because a document shows intent, not operation. `evidence` is a reference, such as the SHA-256 of `inventory.json` and a `manifest.registry_exports` entry, and MUST NOT contain a value from a file, a credential value, or any secret. The name `basis` is used so it is not confused with `agents[].source`, which says how an agent was discovered.
 
 A `null` in an inventory is not known. An answer drafted from a `null` is `needs_validation`, never `gap` and never a pass.
 
@@ -1080,7 +1080,7 @@ The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, th
 
 | Phase | Spec sections in force | Built | Specified, not built |
 | --- | --- | --- | --- |
-| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5); the inspect report from one inventory (7.2) | The findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report's comparison with a previous inventory, `--pdf` and `--redact` (7.2); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (6.3) |
+| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5); the inspect report from one inventory (7.2) | The findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report's comparison with a previous inventory, `--pdf` and `--redact` (7.2); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (6.3); the `documented` basis and its cap (8.1) |
 | 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | Nothing | All of it |
 | 2 Decide | 4.1 approval bands at ask time; 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
 | 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
@@ -1109,3 +1109,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.12-draft | 23 October 2026 | Code and environment scan defined (7.5): one agent per Python file that imports a framework or model SDK, IDs from the path, skipped folders and files, `.env` never opened, example env files read for names, credential and env-name rules, unreadable files, the `--out` guard. CLI row added (6.3); `--owners` and the combination rules updated for the new source (7.1, 7.3, 7.4). Other languages added to the open items (12). Build status updated (14). | Decisions on the code scan: one agent per file, names from code and example env files only, tests skipped, Python only |
 | 0.13-draft | 23 October 2026 | Tools found in code (7.5): a catalogue of action SDKs with proposed tiers, matched on call targets, with the SDK imported by the file or a project file it imports; reach through project imports (`reached_by`). Agents that call a model API over HTTP. Imports inside functions and relative imports followed. Inventory `schema_version` 2 (4.8): `tools[]` gains `source`, `sdk`, `platform_ref`, `calls` and `reached_by`; `server` and hashes are null for code tools; version 1 files rejected with a message to re-run. `tool.destructive_unowned` defined (7) and worked out again by the owner overlay (7.4). | Decisions after a live smoke run: extend `tools[]`, reach through project imports, HTTP client plus known host, a catalogue for money and messages |
 | 0.14-draft | 29 October 2026 | The inspect report built for phase 0 (7.2): `--report` and where it is written, `--inventory` with `--report`, the hash, how the page works without a script, cover, server, tool, finding, priority, policy owner, security and auditor rules, the control mapping statuses, contrast. Comparison, `--pdf` and `--redact` stay phase 1. CLI row added (6.3). Build status updated (14). | Decisions on the report: render on the tool side with a small script, no organisation name, reach shown only where the inventory records it, command not recorded |
+| 0.15-draft | 30 October 2026 | The `documented` basis added to answer provenance (8.1): an answer that rests on a document a person supplied. Order of strength `observed`, `derived`, `documented`, `asserted`. Scoring rule 4 now caps an area at `partial` when no answered question is `observed` or `derived`; a `documented` answer is not counted in evidence coverage. Build status updated (14). | Decision on the order of the bases and the cap |
