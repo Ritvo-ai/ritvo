@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.15-draft · 30 October 2026 · Licence: Apache-2.0
+Version 0.16-draft · 30 October 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -110,6 +110,8 @@ ladders:
 Constraints: every agent MUST have an `owner` when `mode` is `enforce`. Config values that are secrets MUST be `secret://` references. `ritvo check` MUST reject a file that violates these.
 
 Approval bands (`tools[].approvals`): a tool MAY carry value bands that name who approves an ask according to the value of one request parameter. `parameter` names that parameter; `currency` is an ISO 4217 code or null. `bands` are in ascending order of `up_to`; each `up_to` is a number, inclusive; only the last band has no `up_to`, and it covers every value above the bound before it. Each `ladder` is an ordered list of roles, as in `ladders`. A tool with `approvals` uses the band's ladder in place of the tier ladder; the tier still sets the rules of section 5.3, and section 5.4 applies unchanged. When a request does not carry the parameter, or carries one that is not a number, the last band applies. Bands are drafted by `ritvo import-doa` (section 8.4) and are used by the ask path in phase 2.
+
+Roles, agent mode and drafts (verify). `roles` maps a role name to a list of person IDs; a single ID is read as a list of one. `agents[].mode` is `attended`, `unattended` or `both`. A draft written by `ritvo diagnose` (section 8.5) may hold a `null` `tier` for a tool whose tier is not known; `ritvo check` rejects it in a file that is to be used, and such a tool is treated as needing a decision, never as `low`.
 
 ### 4.2 Principal
 
@@ -431,6 +433,7 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | --- | --- |
 | `ritvo review <answers.yaml>` | One-page authority gap result |
 | `ritvo diagnose` | Draft `ritvo.yaml`, authority matrix, gap report from files |
+| `ritvo diagnose <dir> [--doa <file>] [--out <dir>]` | Write the draft `ritvo.yaml`, `authority-matrix.csv`, `gap-report.html` and `diagnosis.json` from valid intake files (section 8.5) |
 | `ritvo diagnose --templates <dir>` | Write the blank intake templates |
 | `ritvo diagnose <dir> [--fix]` | Check filled-in intake files, suggest fixes, and with `--fix` write a corrected copy (section 8.2) |
 | `ritvo inspect` | Local scan; writes `inventory.json` |
@@ -716,7 +719,7 @@ Rules:
 
 ## 8. Diagnostic
 
-Files in, report out. Areas of the gap review: which agents exist and what they can do; who may approve what; what happens when nobody answers; how the rules change; what record exists. Scoring is rule-based with four levels per area (section 8.1). Gap rules over a draft `ritvo.yaml`: no named approver; owner can approve own agent; no escalation path; no approval expiry; policy change with no second person; high tier set to allow; shared keys; unattended agent with no owner.
+Files in, report out. Areas of the gap review: which agents exist and what they can do; who may approve what; what happens when nobody answers; how the rules change; what record exists. Scoring is rule-based with four levels per area (section 8.1). Gap rules over a draft `ritvo.yaml`: no named approver; owner can approve own agent; no escalation path; no approval expiry; policy change with no second person; high tier set to allow; shared keys; unattended agent with no owner. They are defined in section 8.5.
 
 ### 8.1 Gap review
 
@@ -984,6 +987,92 @@ Output:
 - The terminal prints the ignored columns, each problem, the number of decisions, roles, linked tools and problems, and the paths written. Exit status: 0 when the draft is written, non-zero otherwise. A problem in the matrix does not stop the draft; it is listed in it.
 - Errors and problems name the line and column. The terminal and the draft show decision names and level names, because a person must recognise them to confirm; they never show any other cell content.
 
+### 8.5 Draft ritvo.yaml, authority matrix and gap report
+
+`ritvo diagnose <dir>` turns the intake files (section 8.2) and, when given, a delegation-of-authority draft (section 8.4) into three things: a draft `ritvo.yaml`, a static authority matrix, and a gap report. It reads files only, holds no credential and connects to nothing. Everything it writes is a proposal. It never approves, signs, activates or publishes, and it never edits a `ritvo.yaml` that exists. Its output for a real organisation is client data and MUST NOT be committed to a public repository.
+
+Command:
+
+```
+ritvo diagnose <dir> [--doa <file>] [--out <dir>] [--fix]
+```
+
+- `<dir>` is the intake folder of section 8.2. The files in it are checked first, with the rules and the exit status of that section. If they are not valid, nothing is written.
+- `--doa <file>` is the `<name>.draft.yaml` that `ritvo import-doa` wrote (section 8.4). It is read with its `doa_draft_version`, and a file that is not valid is refused with the field named, and nothing is written. Without it, no approval bands are drafted and every rule that needs them reports not known.
+- `--out <dir>` is where the outputs go. The default is `<dir>/diagnosis/`. The four files below are replaced on each successful run; no other file there is touched. `--out` MUST NOT be `<dir>/corrected`. (verify: replace rather than refuse when the folder exists, as the DoA draft does)
+- Inventory as an input is not in this version (section 12).
+
+Outputs, all deterministic (sorted, UTF-8, LF line endings, no timestamps except `generated_at` in `diagnosis.json`):
+
+| File | What it is |
+| --- | --- |
+| `diagnosis.json` | The facts, the findings and what was not drafted. The other three are built from it and from the input hashes. |
+| `ritvo.draft.yaml` | A draft in the shape of section 4.1 |
+| `authority-matrix.csv` | One row for each agent and tool that the agent can use today |
+| `gap-report.html` | The findings and the matrix on one page |
+
+#### What the draft holds
+
+The draft is partial on purpose. It holds only what the inputs say, and nothing else is invented.
+
+- `mode: observe` and `profile: local`.
+- `agents`: for each row of `agents.csv`, `id`, `owner`, `owner_team` and `mode` (`attended`, `unattended`, `both`). A cell that is empty is written as `null`, never defaulted. The name of the credential is never written (section 8.2).
+- `tools`: for each row of `tools.csv`, `id`, `tier` (`null` when not known, never `low`) and `approval_ttl_minutes` (omitted when empty). With `--doa`, `approvals` from the draft, in the shape of section 4.1, for each tool it links. `match` is not drafted, because intake cannot say it.
+- `bindings`: one for each agent and tool pair in `agents.csv`, with `owner_team` taken from the tool. The decision is proposed from the tier: `high` → `ask`; `medium` → `ask`; `low` → `allow`; not known → `ask`. Nothing is drafted as `deny`, and a tier that is not known is never read as `allow`. (verify: `medium` and not known both `ask`)
+- `roles`: every role named in `people.csv` or in the DoA draft, each with all its holders (below). `policy_author` and `escalation_reviewer` are filled the same way when `people.csv` names them. `cool_off_minutes` is not drafted.
+- Not drafted, and listed as such in `diagnosis.json` and the report with the reason: `enforcement`, `identity`, `secrets`, `policy_sections`, `ladders`, `tools[].match`, `cool_off_minutes`. The draft is not expected to pass `ritvo check`. It says what is missing and does not guess.
+
+Changes to section 4.1 that the draft needs (verify):
+
+- `roles` maps a role name to a list of person IDs. A single ID is read as a list of one. Today the file maps each role to one person, while `people.csv` and a DoA can give a role several holders. This settles that open item.
+- `agents[].mode` is `attended`, `unattended` or `both`.
+- A `null` `tier` is allowed in a draft. `ritvo check` rejects it in a file that is to be used, and a tool whose tier is not known is treated as needing a decision, never as `low`.
+
+#### Facts and their basis
+
+The rules read facts. Each fact has a basis (section 8.1): a fact from an intake file is `asserted`, because a person filled the file in; a fact from the DoA draft is `documented`, because it comes from a document a person supplied. A finding carries the bases of the facts it rests on, and shows the weakest. Evidence outranks assertion, so a finding that rests only on `asserted` facts says so. (verify: intake files are `asserted`)
+
+The facts: for each agent its owner, mode and the tools it can use; for each tool its tier and `approval_ttl_minutes`; for each person their roles and deputy; for each tool linked in the DoA draft, its approval bands and ladders. The tools an agent can use today are taken as reach: the agent can call them, and Ritvo is not in the path yet.
+
+#### Gap rules
+
+Each rule gives one of three results: **gap**, a known absent control; **not known** (level `needs_validation`), where the file that would hold the fact was not given or the cell is empty; or no finding. An empty cell means not known (section 8.2), so a rule never reads it as a gap. Every finding names its rule, its subject (an agent or tool ID, or a role), the agents involved, what was seen, why it matters and a next step. The credential name is never shown.
+
+| Rule | Subject | Gap when | Not known when |
+| --- | --- | --- | --- |
+| `approver.none` (no named approver) | tool | the tool's tier is `medium` or `high`, an agent can use it, and `--doa` and `people.csv` are both given but no role in the tool's ladder has a holder, or the DoA draft does not link the tool | `--doa` or `people.csv` is not given |
+| `approver.self` (owner can approve own agent) | agent | the agent's owner holds a role in the ladder of a `medium` or `high` tool the agent can use (section 5.4) | `--doa` or `people.csv` is not given, or the agent has no owner |
+| `escalation.none` (no escalation path) | tool | the people who could answer in turn, the holders of the ladder's roles and their deputies, number fewer than two | `--doa` or `people.csv` is not given |
+| `expiry.none` (no approval expiry) | tool | never | the tool's tier is `medium` or `high` and `approval_ttl_minutes` is empty |
+| `policy.one_person` (policy change with no second person) | role | `people.csv` is given and nobody holds `policy_author` or `escalation_reviewer`, or one person is the only holder of both | `people.csv` is not given |
+| `tier.high_allow` (high tier set to allow) | tool | the tool's tier is `high` and an agent can use it today, so no ask stands in the way | the tool's tier is empty or `unknown` and an agent can use it |
+| `credential.shared` (shared keys) | credential | two or more agents have the same `credential`. The finding names the agents, not the credential | never |
+| `unattended.no_owner` (unattended agent with no owner) | agent | `mode` is `unattended` or `both` and `owner` is empty | `mode` is empty and `owner` is empty |
+
+`tier.high_allow` describes today, before Ritvo: the draft proposes `ask` for the same pair. (verify: reach read as allow without ask)
+
+A rule that needs a file that was not given says which one, once. The terminal and the report show the number of gap and not known findings for each rule.
+
+#### The authority matrix
+
+`authority-matrix.csv` has one row for each agent and tool in `agents.csv`: `agent_id`, `agent_name`, `owner`, `owner_team`, `mode`, `tool_id`, `system`, `access`, `tier`, `tool_owner_team`, `proposed_decision`, `approval_ladder` (roles, `;`-separated, empty when none), `ladder_holders` (person IDs, `;`-separated), `gaps` (rule IDs, `;`-separated; a rule that is not known is written `rule:unknown`). A value that is not known is an empty cell. Values are written as CSV (section 8.2, RFC 4180, CRLF), and a cell that starts with `=`, `+`, `-`, `@`, tab or carriage return is written with a leading `'` so that a spreadsheet does not read it as a formula. (verify: one row for each pair, not a grid)
+
+#### The gap report
+
+`gap-report.html` is built from `diagnosis.json` alone, under the rules of section 7.2: one file, inline styles and script, the system font stack, no network requests, light and dark themes, a label and a shape on every status, text at 4.5 to 1 contrast, and a print stylesheet. It states the SHA-256 of every input file and of `diagnosis.json`. It shows:
+
+- the count of gap and not known findings, by rule;
+- each finding, gaps first, with what was seen, why it matters and the next step, and the weakest basis it rests on;
+- an agent-by-tool grid of the proposed decision, with the tier;
+- what was not drafted and why, and which input would fill each rule that reports not known;
+- a statement that the intake is self-reported, that the draft is a proposal, and that the report is not a conformity assessment.
+
+It shows agent IDs and names and tool IDs and descriptions, so that a person can recognise them, and no credential name and no other cell content. A starter control mapping is not in this version (section 12).
+
+#### Terminal and exit status
+
+The terminal prints the intake summary of section 8.2, then one line for each rule with its gap and not known counts, then the paths written. The exit status is 0 when the files are written, whatever the findings, and non-zero when the intake or the DoA draft is not valid.
+
 ## 9. Security requirements
 
 - Tokens: validate issuer, audience and expiry; never store or forward a raw token; one hop, one token.
@@ -1047,7 +1136,10 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - Which design partner's platforms set the order of inspector sources after the registry readers.
 - Approval rules exported from ERP and procurement tools (for example SAP release strategies, Coupa approval chains, Workday business processes) as further DoA inputs (section 8.4). No export format is verified yet.
 - Languages other than Python for the code scan (section 7.5), for example TypeScript and JavaScript with the TypeScript middleware.
-- Roles held by more than one person: `roles` in section 4.1 maps one person to each role, while `people.csv` and a DoA can give a role several holders. To settle when `ritvo diagnose` builds the draft `ritvo.yaml`.
+- Roles held by more than one person: settled in sections 4.1 and 8.5 (`roles` maps a role to a list of people). To confirm.
+- Inventory as an input to `ritvo diagnose` (section 8.5), so that agents and tools found by the inspector, and their findings, join the intake. Not in the first version.
+- A starter control mapping in the gap report (section 8.5). The inspect report has one (section 7.2); whether the gap report shares it is open.
+- Whether `ritvo init --questionnaire` (section 6.3) writes the same draft from typed answers or only the parts that intake files cannot give.
 
 ## 13. Platform support and CI
 
@@ -1076,11 +1168,11 @@ Platform rules for contributors:
 
 ## 14. Phases
 
-The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, then 4 and 5. This section maps them to the sections of this spec and records status as of 29 October 2026. "Specified" means this spec defines it. "Built" means the code is on the main branch.
+The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, then 4 and 5. This section maps them to the sections of this spec and records status as of 30 October 2026. "Specified" means this spec defines it. "Built" means the code is on the main branch.
 
 | Phase | Spec sections in force | Built | Specified, not built |
 | --- | --- | --- | --- |
-| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5); the inspect report from one inventory (7.2) | The findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report's comparison with a previous inventory, `--pdf` and `--redact` (7.2); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (6.3); the `documented` basis and its cap (8.1) |
+| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5); the inspect report from one inventory (7.2) | The findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers (8.3); the report's comparison with a previous inventory, `--pdf` and `--redact` (7.2); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (6.3, 8.5); the `documented` basis and its cap (8.1) |
 | 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | Nothing | All of it |
 | 2 Decide | 4.1 approval bands at ask time; 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
 | 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
@@ -1110,3 +1202,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.13-draft | 23 October 2026 | Tools found in code (7.5): a catalogue of action SDKs with proposed tiers, matched on call targets, with the SDK imported by the file or a project file it imports; reach through project imports (`reached_by`). Agents that call a model API over HTTP. Imports inside functions and relative imports followed. Inventory `schema_version` 2 (4.8): `tools[]` gains `source`, `sdk`, `platform_ref`, `calls` and `reached_by`; `server` and hashes are null for code tools; version 1 files rejected with a message to re-run. `tool.destructive_unowned` defined (7) and worked out again by the owner overlay (7.4). | Decisions after a live smoke run: extend `tools[]`, reach through project imports, HTTP client plus known host, a catalogue for money and messages |
 | 0.14-draft | 29 October 2026 | The inspect report built for phase 0 (7.2): `--report` and where it is written, `--inventory` with `--report`, the hash, how the page works without a script, cover, server, tool, finding, priority, policy owner, security and auditor rules, the control mapping statuses, contrast. Comparison, `--pdf` and `--redact` stay phase 1. CLI row added (6.3). Build status updated (14). | Decisions on the report: render on the tool side with a small script, no organisation name, reach shown only where the inventory records it, command not recorded |
 | 0.15-draft | 30 October 2026 | The `documented` basis added to answer provenance (8.1): an answer that rests on a document a person supplied. Order of strength `observed`, `derived`, `documented`, `asserted`. Scoring rule 4 now caps an area at `partial` when no answered question is `observed` or `derived`; a `documented` answer is not counted in evidence coverage. Build status updated (14). | Decision on the order of the bases and the cap |
+| 0.16-draft | 30 October 2026 | The draft `ritvo.yaml`, authority matrix and gap report defined (8.5): inputs, the four output files, what the draft holds and omits, the bases of facts, the eight gap rules with their gap and not known results, the matrix as CSV with formula-safe cells, the report, terminal and exit status. Section 4.1 gains lists of holders for `roles`, `agents[].mode` and a `null` tier in drafts (verify). CLI row added (6.3). Open items updated (12). Build status updated (14). | Review of the intake, DoA and gap rule sections for `ritvo diagnose` |
