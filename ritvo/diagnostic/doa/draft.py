@@ -5,9 +5,10 @@ from decimal import Decimal
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, StrictStr, ValidationError
 
 from ritvo.diagnostic.doa.mapping import Mapping
-from ritvo.diagnostic.doa.matrix import Cell, Kind, Matrix, data_rows, read_cell
+from ritvo.diagnostic.doa.matrix import Cell, DoaError, Kind, Matrix, data_rows, read_cell
 from ritvo.diagnostic.intake.reader import Person
 
 DRAFT_VERSION = 1
@@ -223,3 +224,70 @@ def build_draft(matrix: Matrix, mapping: Mapping, people: tuple[Person, ...] | N
 def write_draft(draft: Draft, path: Path) -> None:
     text = yaml.safe_dump(draft.data, sort_keys=False, allow_unicode=True)
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+class _Model(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+
+class DraftSource(_Model):
+    file: StrictStr
+    sha256: StrictStr
+
+
+class DraftRole(_Model):
+    id: StrictStr
+    holders: list[StrictStr]
+
+
+class DraftBand(_Model):
+    up_to: StrictInt | StrictFloat | None = None
+    ladder: list[StrictStr]
+
+
+class DraftApprovals(_Model):
+    parameter: StrictStr
+    currency: StrictStr | None
+    bands: list[DraftBand]
+
+
+class DraftTool(_Model):
+    id: StrictStr
+    decision: StrictStr
+    approvals: DraftApprovals
+
+
+class DraftUnlinked(_Model):
+    decision: StrictStr
+    bands: list[DraftBand]
+
+
+class DoaDraft(_Model):
+    """A `<name>.draft.yaml` as `ritvo import-doa` writes it, read back."""
+
+    doa_draft_version: StrictInt
+    source: DraftSource
+    roles: list[DraftRole]
+    tools: list[DraftTool]
+    unlinked: list[DraftUnlinked]
+    problems: list[StrictStr]
+
+
+def read_draft(path: Path) -> DoaDraft:
+    """Read a DoA draft, refusing a file that is not valid and naming the fields."""
+    try:
+        data = yaml.safe_load(path.read_bytes().decode("utf-8"))
+    except (yaml.YAMLError, UnicodeDecodeError):
+        raise DoaError(f"{path.name} is not a YAML file") from None
+    except OSError:
+        raise DoaError(f"{path.name} cannot be read") from None
+    if isinstance(data, dict) and data.get("doa_draft_version") != DRAFT_VERSION:
+        raise DoaError(f"{path.name}: doa_draft_version must be {DRAFT_VERSION}")
+    try:
+        return DoaDraft.model_validate(data)
+    except ValidationError as exc:
+        where = ", ".join(
+            ".".join(str(part) for part in error["loc"]) or "the file"
+            for error in exc.errors(include_url=False, include_input=False)
+        )
+        raise DoaError(f"{path.name}: not a valid DoA draft ({where})") from None
