@@ -27,7 +27,8 @@ from ritvo.diagnostic.intake.columns import AGENTS, PEOPLE, TOOLS
 from ritvo.diagnostic.intake.reader import CORRECTED, Intake, IntakeError, fix_intake, load_intake
 from ritvo.diagnostic.intake.templates import write_templates
 from ritvo.diagnostic.report.write import DIAGNOSIS_DIR, write_diagnosis
-from ritvo.diagnostic.review.questions import LEVEL_LABELS
+from ritvo.diagnostic.review.draft import draft_from_file
+from ritvo.diagnostic.review.questions import LEVEL_LABELS, QUESTIONS
 from ritvo.diagnostic.review.report import write_report
 from ritvo.diagnostic.review.scoring import (
     OLD_REVIEW_VERSION,
@@ -78,18 +79,35 @@ def main(
 def review(
     answers: Annotated[
         Path,
-        typer.Argument(exists=True, dir_okay=False, readable=True, help="The answers file (YAML)."),
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="The answers file (YAML), or with --draft the inventory (JSON).",
+        ),
     ],
     out: Annotated[
         Path | None,
         typer.Option(
             "--out",
             dir_okay=False,
-            help="Where to write the result. Default: review.html beside the answers file.",
+            help="Where to write the result. Default: review.html beside the answers file, "
+            "or with --draft answers.draft.yaml beside the inventory.",
         ),
     ] = None,
+    draft: Annotated[
+        bool,
+        typer.Option(
+            "--draft",
+            help="Draft an answers file from an inventory. It is never scored until a person "
+            "removes the draft line, and never written over a file.",
+        ),
+    ] = False,
 ) -> None:
     """Score an authority gap review and write a one-page result. Reads files only."""
+    if draft:
+        _draft_answers(answers, out)
+        return
     try:
         result = score(load_answers(answers))
     except ReviewError as exc:
@@ -108,6 +126,26 @@ def review(
         detail = f" ({area.answered} of {len(area.questions)} answered)" if area.incomplete else ""
         typer.echo(f"{area.area.title:<{width}}  {LEVEL_LABELS[area.level]}{detail}")
     typer.echo(f"Wrote {target}")
+
+
+def _draft_answers(inventory: Path, out: Path | None) -> None:
+    target = out if out is not None else inventory.parent / "answers.draft.yaml"
+    if _same_file(target, inventory):
+        _fail(f"--out {target} is the inventory itself; choose another path")
+    if target.exists():
+        _fail(f"{target} already exists")
+    try:
+        drafted, text = draft_from_file(inventory)
+    except InventoryError as exc:
+        _fail(str(exc))
+    target.write_text(text, encoding="utf-8", newline="\n")
+    width = max(len(item.question) for item in drafted)
+    for item in drafted:
+        typer.echo(f"{item.question:<{width}}  {item.answer}")
+    left = len(QUESTIONS) - len(drafted)
+    typer.echo(f"{left} questions are left to a person.")
+    typer.echo(f"Wrote {target}")
+    typer.echo("Read it, change what is wrong and remove the draft line before ritvo review.")
 
 
 def _summary(intake: Intake) -> list[str]:
