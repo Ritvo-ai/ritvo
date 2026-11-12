@@ -148,6 +148,11 @@ def load_answers(path: Path) -> Answers:
         raise ReviewError(f"the answers file is not valid YAML{where}") from None
     if not isinstance(data, dict):
         raise ReviewError("the answers file must be a YAML mapping")
+    if data.get("draft") is True:
+        raise ReviewError(
+            "this file is a draft; read it, change what is wrong and remove the draft line, "
+            "then run the review again"
+        )
     try:
         parsed = _AnswersFile.model_validate(data)
     except ValidationError as exc:
