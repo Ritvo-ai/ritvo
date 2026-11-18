@@ -47,6 +47,14 @@ FORBIDDEN = (
     ("robot emoji", re.compile("\N{ROBOT FACE}")),
 )
 
+# GitHub adds this trailer to the squash commit of a Dependabot pull request. It is the one bot
+# trailer that is allowed, and only as an exact line; any other bot is still caught by "[bot]".
+DEPENDABOT_TRAILER = re.compile(
+    r"^[ \t]*co-authored-by: dependabot\[bot\] "
+    r"<49699333\+dependabot\[bot\]@users\.noreply\.github\.com>[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 SIGNED_OFF_BY = re.compile(r"^Signed-off-by: .+ <[^<>@\s]+@[^<>@\s]+>\s*$", re.MULTILINE)
 
 SCISSORS = "# ------------------------ >8 ------------------------"
@@ -57,6 +65,7 @@ SIGNOFF_EXEMPT_AUTHORS = ("49699333+dependabot[bot]@users.noreply.github.com",)
 
 def find_attribution(text: str) -> list[str]:
     """Return a description of each forbidden pattern found in text."""
+    text = DEPENDABOT_TRAILER.sub("", text)
     return [label for label, pattern in FORBIDDEN if pattern.search(text)]
 
 

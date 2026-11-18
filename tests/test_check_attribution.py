@@ -52,6 +52,29 @@ def test_clean_text_passes(text: str) -> None:
     assert ca.find_attribution(text) == []
 
 
+DEPENDABOT = "Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>"
+
+
+def test_the_dependabot_trailer_is_allowed() -> None:
+    assert ca.find_attribution(DEPENDABOT) == []
+    assert ca.find_attribution(f"ci: Bump the actions group\n\n{DEPENDABOT}\n") == []
+    assert ca.find_attribution(DEPENDABOT.upper()) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Co-authored-by: dependabot[bot] <bot@example.org>",
+        f"{DEPENDABOT} Claude",
+        "Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\n"
+        "Co-authored-by: renovate[bot] <bot@example.org>",
+        "Co-authored-by: Claude <49699333+dependabot[bot]@users.noreply.github.com>",
+    ],
+)
+def test_the_exemption_is_only_the_exact_trailer(text: str) -> None:
+    assert ca.find_attribution(text)
+
+
 def test_message_requires_signoff() -> None:
     assert ca.check_message("feat: add thing", require_signoff=True)
     assert ca.check_message(f"feat: add thing\n\n{SIGNOFF}", require_signoff=True) == []
