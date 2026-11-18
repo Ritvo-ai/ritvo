@@ -1,6 +1,6 @@
 # Ritvo — Product Requirements (PRD)
 
-Status: draft v0.12 · 30 October 2026 · Owner: SK · Licence: Apache-2.0
+Status: draft v0.13 · 12 November 2026 · Owner: SK · Licence: Apache-2.0
 
 ## 1. Summary
 
@@ -135,8 +135,8 @@ Status of phase 0:
 
 | State | Items |
 | --- | --- |
-| Built | `ritvo review` with the scoring contract; intake templates and their reader, called by `ritvo diagnose <dir>` with suggested fixes and `--fix`; inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; DoA import from the client's own matrix (`ritvo import-doa`); code and environment scan (`ritvo inspect --code`), including tools found in code and which agents reach them; the HTML inspect report from one inventory (`ritvo inspect --report`); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (SPEC 8.5); repository hygiene and CI |
-| Specified, not built | Drafted answers; assisted drafting rules; the `documented` basis (SPEC 8.1); the report's comparison with a previous scan, PDF and redaction (phase 1) |
+| Built | `ritvo review` with the scoring contract; intake templates and their reader, called by `ritvo diagnose <dir>` with suggested fixes and `--fix`; inventory format; registry exports (`ritvo inspect --registry`); owner overlay (`--owners`); config discovery (`--defaults`, `--config`); help text and remedy hints for export errors; DoA import from the client's own matrix (`ritvo import-doa`); code and environment scan (`ritvo inspect --code`), including tools found in code and which agents reach them; the HTML inspect report from one inventory (`ritvo inspect --report`); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (SPEC 8.5); drafted answers for the three Derive questions the inventory supports (`ritvo review --draft`, SPEC 8.3); repository hygiene and CI |
+| Specified, not built | Assisted drafting rules; the `documented` basis (SPEC 8.1); the report's comparison with a previous scan, PDF and redaction (phase 1) |
 | Not started | Additive re-run; interview assistant; questionnaire init |
 
 Where a person is still asked, by phase:
@@ -192,3 +192,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | draft v0.10 | 23 October 2026 | The code scan's tools and reach noted as built in the phase 0 status (section 7). |
 | draft v0.11 | 29 October 2026 | The HTML inspect report from one inventory moved to built in the phase 0 status (section 7). |
 | draft v0.12 | 30 October 2026 | The draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` moved from not started to built (SPEC 8.5) in the phase 0 status (section 7). |
+| draft v0.13 | 12 November 2026 | Drafted answers (SPEC 8.3) moved to built for `agents.inventory`, `agents.owner` and `agents.reach`; four Derive questions moved to Ask because an inventory holds no source for them. The 7, 5 and 5 split is now 3 Derive, 5 Observe and 9 Ask until more sources exist. |

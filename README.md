@@ -122,7 +122,13 @@ It writes `intake/diagnosis/` (or the folder you give with `--out`) with four fi
 ritvo review my-answers.yaml
 ```
 
-The answers are typed by hand for now.
+Where you have an inventory, draft the answers it supports instead of typing them:
+
+```sh
+ritvo review --draft inventory.json        # writes answers.draft.yaml; never over a file
+```
+
+The draft covers `agents.inventory`, `agents.owner` and `agents.reach`, each with its basis and the inventory's hash. It is a proposal: read it, change what is wrong, remove the `draft: true` line, add the other answers by hand, then run `ritvo review`. A draft is refused until the line is removed. See [docs/SPEC.md](docs/SPEC.md) section 8.3.
 
 To try steps 1 to 3 and 5 on fictional data from a clone:
 
