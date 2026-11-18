@@ -130,6 +130,27 @@ ritvo review --draft inventory.json        # writes answers.draft.yaml; never ov
 
 The draft covers `agents.inventory`, `agents.owner` and `agents.reach`, each with its basis and the inventory's hash. It is a proposal: read it, change what is wrong, remove the `draft: true` line, add the other answers by hand, then run `ritvo review`. A draft is refused until the line is removed. See [docs/SPEC.md](docs/SPEC.md) section 8.3.
 
+After a rescan, carry forward what a person already settled:
+
+```sh
+ritvo review --draft new/inventory.json --previous my-answers.yaml
+```
+
+An answer is carried only if what it rests on is unchanged; a changed one is drafted again and listed. Then ask for what is still open, one question at a time, without any model or network:
+
+```sh
+ritvo review --interview my-answers.yaml    # writes my-answers.interview.yaml; answers are recorded as asserted
+```
+
+No intake files yet? Answer a short questionnaire for a first draft `ritvo.yaml` with defaults per tier:
+
+```sh
+ritvo init --questionnaire                   # saves ritvo-init/questionnaire.yaml and ritvo-init/ritvo.draft.yaml
+ritvo init --questionnaire --no-input        # draft from a saved or hand-written questionnaire.yaml
+```
+
+See [docs/SPEC.md](docs/SPEC.md) sections 8.6 and 8.7, and `examples/init/questionnaire.yaml`.
+
 To try steps 1 to 3 and 5 on fictional data from a clone:
 
 ```sh

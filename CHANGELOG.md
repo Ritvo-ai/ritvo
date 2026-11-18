@@ -28,6 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `ritvo diagnose <dir> [--doa <file>] [--out <dir>]`: from valid intake files, and optionally the draft that `ritvo import-doa` wrote, writes `diagnosis/` with a draft `ritvo.yaml` (only what the files say, owners and tiers left `null` when not known, `ask` proposed for every tool but low tier), an `authority-matrix.csv` (one row for each agent and tool, safe to open in a spreadsheet), a self-contained `gap-report.html`, and `diagnosis.json`. Eight gap rules each give a known gap or a not-known result; an empty cell is never read as a gap, and a credential's name is never written. Specified in `docs/SPEC.md` section 8.5.
 - `people.csv` may list a person on several rows, one role or several on each; the rows are merged and must agree on team and deputy. Roles in the draft `ritvo.yaml` list all their holders.
 - `ritvo review --draft <inventory.json>`: drafts an answers file for `agents.inventory`, `agents.owner` and `agents.reach` from an inventory. The draft is a separate file marked `draft: true`, never written over a file, and refused by `ritvo review` until a person removes the line.
+- `ritvo review --draft ... --previous <answers.yaml>`: additive re-run. Carries an answer forward only if the part of the inventory it rests on is unchanged (a per-question digest in the drafted evidence); other answers are carried as they are.
+- `ritvo review --interview <answers.yaml>`: asks the questions still open with plain prompts (no model, no network) and records each as `asserted` in a new file.
+- `ritvo init --questionnaire`: asks a short fixed set of questions, saves `questionnaire.yaml`, and writes a first draft `ritvo.yaml` with defaults per tier. `--no-input` drafts from a saved questionnaire. Example in `examples/init/`.
 - Runtime dependencies Jinja2, Pydantic and PyYAML.
 - Continuous integration on Linux, macOS and Windows: lint, type check, tests, licence check, secret scan, wheel build and install test, CodeQL, and commit hygiene.
 - Release workflow: on a `v*` tag, test, build, check that the tag matches the package version, attest build provenance, and publish to PyPI by trusted publishing after approval.
@@ -49,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Spec 0.11-draft: the DoA import rules the first build relies on (section 8.4). PRD draft v0.8: DoA import built.
 - Spec 0.12-draft: define the code and environment scan (section 7.5). PRD draft v0.9: code scan built.
 - Spec 0.13-draft: tools found in code, reach, HTTP model calls, inventory schema_version 2, and `tool.destructive_unowned` (sections 4.8, 7, 7.4, 7.5). PRD draft v0.10.
+- Spec 0.19-draft and 0.20-draft: define and build the phase 0 close-out (sections 8.1, 8.3, 8.6, 8.7). PRD draft v0.14: phase 0 built. The `documented` basis now caps an area at `partial` when no answer is observed or derived.
 - Spec 0.17-draft and 0.18-draft: define and build drafted answers (section 8.3); `escalation.expiry`, `policy_change.second_person`, `policy_change.owners` and `policy_change.versioning` move from Derive to Ask because an inventory holds no source for them. PRD draft v0.13.
 
 [Unreleased]: https://github.com/Ritvo-ai/ritvo/commits/main

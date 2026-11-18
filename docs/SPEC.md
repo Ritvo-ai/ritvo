@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.18-draft · 12 November 2026 · Licence: Apache-2.0
+Version 0.20-draft · 18 November 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -432,7 +432,8 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | Command | Purpose |
 | --- | --- |
 | `ritvo review <answers.yaml>` | One-page authority gap result |
-| `ritvo review --draft <inventory.json> [--out <file>]` | Draft an answers file from an inventory; never written over a file, never scored until a person removes `draft: true` (section 8.3) |
+| `ritvo review --draft <inventory.json> [--previous <answers.yaml>] [--out <file>]` | Draft an answers file from an inventory; never written over a file, never scored until a person removes `draft: true`; with `--previous`, carry answers forward whose source is unchanged (section 8.3) |
+| `ritvo review --interview <answers.yaml> [--out <file>]` | Ask the questions that are still not answered and record each as `asserted` in a new file (section 8.6) |
 | `ritvo diagnose` | Draft `ritvo.yaml`, authority matrix, gap report from files |
 | `ritvo diagnose <dir> [--doa <file>] [--out <dir>]` | Write the draft `ritvo.yaml`, `authority-matrix.csv`, `gap-report.html` and `diagnosis.json` from valid intake files (section 8.5) |
 | `ritvo diagnose --templates <dir>` | Write the blank intake templates |
@@ -446,7 +447,8 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | `ritvo inspect --owners <agents.csv>` | Merge owners from an intake file into an inventory, with any source or with `--inventory <file>` (section 7.4) |
 | `ritvo import <inventory.json>` | Create a draft change request from an inventory |
 | `ritvo import-doa <matrix.csv> [--intake <dir>] [--no-input]` | Read a delegation-of-authority matrix exported as CSV, confirm how it is read, and write draft approval bands and roles (section 8.4) |
-| `ritvo init [--questionnaire]` | Build `ritvo.yaml` |
+| `ritvo init --questionnaire [--out <dir>] [--no-input]` | Ask a short fixed set of questions and write a first draft `ritvo.yaml` with defaults per tier (section 8.7) |
+| `ritvo init` | Build `ritvo.yaml` (phase 1) |
 | `ritvo check` | Validate config, secrets, identity and the authority diff |
 | `ritvo apply` | Apply a signed-off policy version |
 | `ritvo approve <id>` | Resolve an ask |
@@ -797,7 +799,7 @@ Scoring, per area:
 
 There is no total score across areas. Each area also shows its evidence coverage: how many of its questions have a `basis` of `derived` or `observed`, out of the questions in the area. A `documented` answer is not counted. Coverage is a count, not a score.
 
-Provenance. `basis` records where an answer came from. `derived` means read from a file or registry export, `observed` means taken from logs or records, `documented` means the answer rests on a document a person supplied, such as a policy or a delegation-of-authority matrix, and `asserted` means a person said so. From strongest to weakest the bases are `observed`, `derived`, `documented`, `asserted`. Both bases that a machine reads outrank a document, because a document shows intent, not operation. `evidence` is a reference, such as the SHA-256 of `inventory.json` and a `manifest.registry_exports` entry, and MUST NOT contain a value from a file, a credential value, or any secret. The name `basis` is used so it is not confused with `agents[].source`, which says how an agent was discovered.
+Provenance. `basis` records where an answer came from. `derived` means read from a file or registry export, `observed` means taken from logs or records, `documented` means the answer rests on a document a person supplied, such as a policy or a delegation-of-authority matrix, and `asserted` means a person said so. From strongest to weakest the bases are `observed`, `derived`, `documented`, `asserted`. Both bases that a machine reads outrank a document, because a document shows intent, not operation. `evidence` is a reference, such as the SHA-256 of `inventory.json` and a `manifest.registry_exports` entry, and MUST NOT contain a value from a file, a credential value, or any secret. For a `documented` answer it is the document's file name, without its folders, and the SHA-256 of its bytes: `<name> sha256:<hex>`. The file itself is never read or copied by Ritvo. The name `basis` is used so it is not confused with `agents[].source`, which says how an agent was discovered.
 
 A `null` in an inventory is not known. An answer drafted from a `null` is `needs_validation`, never `gap` and never a pass.
 
@@ -915,7 +917,7 @@ The command. `ritvo review --draft <inventory.json> [--out <file>]` reads one in
 - The draft is written to `answers.draft.yaml` beside the inventory, or to `--out`. If the target exists, nothing is written and the exit status is non-zero: a draft is never written over any file. `--out` MUST NOT be the inventory itself.
 - The file is an answers file (section 8.1) with `review_version: 1`, a top-level `draft: true`, no `organisation`, and an `answers`, `basis` and `notes` entry for each question drafted. Questions routed to a person or to observation are left out, so they are `not_answered`.
 - `ritvo review <file>` refuses a file that has `draft: true`: the error says it is a draft, that a person should read it, change what is wrong and remove the `draft` line, and nothing is written. The refusal is the only effect of the key; a draft is scored only after a person has confirmed it by removing the line.
-- Every drafted answer has `basis.source: derived` and `basis.evidence: <inventory file name> sha256:<hex>`, the file name without its folders and the SHA-256 of the file's bytes. A drafted answer is a proposal. Its note is one line of counts, never an agent ID, an owner or a tool name.
+- Every drafted answer has `basis.source: derived` and `basis.evidence: <inventory file name> sha256:<hex> question sha256:<hex>`: the file name without its folders, the SHA-256 of the file's bytes, and the question digest (below). A drafted answer is a proposal. Its note is one line of counts, never an agent ID, an owner or a tool name.
 
 Drafting rules for the three Derive questions. N is the number of agents in `agents[]`.
 
@@ -929,6 +931,22 @@ Drafting rules for the three Derive questions. N is the number of agents in `age
 - A `null` in the inventory is never drafted as a gap and never as a pass (section 8.1).
 - The note says what the answer rests on, for example `3 of 5 agents have an owner recorded.` or `2 of 5 agents reach a tool found by the scan; 1 tool has a proposed high tier.`
 - Terminal: one line per drafted question with its answer, a line saying how many questions are left to a person, and the path written. Exit status 0 when the draft is written.
+
+Question digest. The digest of a question is the SHA-256 of the canonical JSON (keys sorted, separators `,` and `:`, UTF-8, non-ASCII kept) of the part of the inventory that decided the answer:
+
+| Question | What is hashed |
+| --- | --- |
+| `agents.inventory` | The sorted list of agent IDs |
+| `agents.owner` | The list of `[id, owner]` for every agent, sorted by ID |
+| `agents.reach` | `{"agents": <sorted agent IDs>, "tools": <list of [id, proposed_tier, sorted reached_by] for every tool, sorted by ID>}` |
+
+Additive re-run. `ritvo review --draft <inventory.json> --previous <answers.yaml>` drafts from a new inventory and keeps what a person has already settled. `<answers.yaml>` is an answers file (section 8.1) or an earlier draft; it is read, never changed, and a `review_version` 0 file is refused with a message to convert it. Each answer in it is treated as follows:
+
+- A `derived` answer to one of the three questions in this section is compared with the new draft. If its evidence has a question digest and it equals the new digest, the previous answer, basis and note are carried unchanged: a person may have edited the answer after the first draft, and that confirmation survives. If the digest differs, or the evidence has no question digest, the question is drafted again from the new inventory and listed as changed.
+- Every other answer in the previous file is carried unchanged with its basis and note: an `asserted`, `documented` or `observed` answer, or a `derived` answer to some other question. Its source is not this inventory, so this inventory cannot show that it changed.
+- A drafted question that the previous file did not answer is drafted and listed as new.
+- `organisation` is carried. The result is a new draft file with `draft: true` and is written under the rules above: a separate file, never over any file, and never scored until a person has removed the line.
+- Terminal: for each of the three questions, its answer and `carried`, `changed` or `new`; for a changed answer, the previous answer as well; a line with the number of other answers carried; and the path written.
 
 ### 8.4 Delegation-of-authority import
 
@@ -1104,6 +1122,64 @@ It shows agent IDs and names and tool IDs and descriptions, in the grid, so that
 
 The terminal prints the intake summary of section 8.2, then one line for each rule with its gap and not known counts, then the paths written. The exit status is 0 when the files are written, whatever the findings, and non-zero when the intake or the DoA draft is not valid.
 
+### 8.6 Interview
+
+`ritvo review --interview <answers.yaml> [--out <file>]` asks the person the questions that are still not answered, and records what they type. It uses plain prompts: there is no model, no network call and no credential, so it cannot approve, sign, activate or publish anything. It writes only the new answers file described here. The file contract is the answers file of section 8.1, which a person or a later interface can write directly; the prompts only fill it in.
+
+- `<answers.yaml>` is an answers file or a draft (section 8.3), read with the rules of section 8.1 except that `draft: true` is accepted. A `review_version` 0 file is refused with a message to convert it. An invalid file is refused with the problem named, and nothing is written.
+- The questions asked are those with no answer in the file, in the order of section 8.1. Every question that already has an answer is left as it is and is not asked.
+- For each question the terminal shows the question, the option IDs, and `unknown`. An empty reply leaves the question unanswered. Any other reply must be an option ID or `unknown`, otherwise the question is asked again.
+- Each reply is recorded in `answers` with `basis: {source: asserted}` and no `evidence`: a person said so. An interview never records another basis.
+- Everything else in the file is carried over unchanged: `organisation`, existing answers, bases, notes and, if it was there, `draft: true`. The file is written again as YAML, so comments in it are lost.
+- The result is written to `<name>.interview.yaml` beside the input, or to `--out`. If the target exists, or is the input, nothing is written and the exit status is non-zero. If no question is unanswered, nothing is written and the terminal says so. Exit status 0 when the file is written.
+- Terminal: after the last question, the number of answers recorded and the path written. A file the interview wrote from a draft is still a draft.
+
+### 8.7 Questionnaire init
+
+`ritvo init --questionnaire [--out <dir>] [--no-input]` is for an organisation that has no intake files yet. It asks a short fixed set of questions and writes a first draft `ritvo.yaml` with defaults per tier. It reads and writes files only, holds no credential and connects to nothing. The draft is a proposal: it approves, signs, activates and publishes nothing, and it never edits a `ritvo.yaml` that exists. It is client data for a real organisation and MUST NOT be committed to a public repository.
+
+- `--out` is a folder, `ritvo-init` by default, created if it does not exist. A file there is an error.
+- Without `--no-input` the command prompts for each answer, saves them to `<out>/questionnaire.yaml`, and then writes `<out>/ritvo.draft.yaml`. If `<out>/questionnaire.yaml` or `<out>/ritvo.draft.yaml` exists, nothing is written and the exit status is non-zero; the message says to use `--no-input` to draft from the saved answers.
+- With `--no-input` nothing is asked. The command reads `<out>/questionnaire.yaml`, which a person or a later interface may have written, and writes `<out>/ritvo.draft.yaml`. A missing or invalid file is an error that names the field, and nothing is written. If `<out>/ritvo.draft.yaml` exists, nothing is written.
+
+The questionnaire file:
+
+```yaml
+questionnaire_version: 1
+agents:
+  - id: acme.research
+    owner: alice
+    owner_team: research          # optional
+    mode: attended                # attended | unattended | both
+    tools: [broker.order]         # tool IDs the agent can use today
+tools:
+  - id: broker.order
+    tier: high                    # low | medium | high
+    owner_team: risk              # optional
+roles:
+  policy_author: [alice]
+  escalation_reviewer: [bob]
+cool_off_minutes: 60              # optional, default 60
+ladder_timeout_minutes: 30        # optional, default 30
+high_ladder: [escalation_reviewer]   # optional, default as shown; roles named in `roles`
+```
+
+Validation: the file is read with the ID rule of section 8.2. `agents` and `tools` each hold at least one entry and no repeated ID; `owner`, `mode`, `tier` and `tools` are required, because a person is answering and an answer that is not known is never defaulted. `tools` of an agent name tools in `tools`. `policy_author` and `escalation_reviewer` each hold at least one person ID, and every role in `high_ladder` is a key of `roles`. `cool_off_minutes` and `ladder_timeout_minutes` are whole numbers of at least 1. An unknown field is an error. An error names the field and does not echo a value, except an ID, shortened to 40 characters.
+
+The draft is built by the same builder as `ritvo diagnose` (section 8.5), from the questionnaire read as intake: agents with their owner, owner team, mode and tools; tools with their tier and owner team; people from every owner and role holder, with their roles. The input's `asserted` basis applies. It then adds the defaults:
+
+| Section | Default |
+| --- | --- |
+| `mode`, `profile` | `observe`, `local` |
+| `bindings` | One for each agent and tool pair, with the decision proposed by tier as in section 8.5: `high` `ask`, `medium` `ask`, `low` `allow`. Nothing is `deny` |
+| `tools[].approval_ttl_minutes` | `high` 15, `medium` 30; omitted for `low` |
+| `roles` | The roles of the questionnaire, each a list of person IDs, and `cool_off_minutes` |
+| `ladders` | `high` is `high_ladder`; `timeout_minutes` is `ladder_timeout_minutes` |
+
+An example for a fictional organisation is in `examples/init/questionnaire.yaml`.
+
+Not drafted, as in section 8.5: `enforcement`, `identity`, `secrets`, `policy_sections` and `tools[].match`. The draft is not expected to pass `ritvo check`. Terminal: the number of agents and tools read, the defaults applied, and the paths written. Exit status 0 when the draft is written.
+
 ## 9. Security requirements
 
 - Tokens: validate issuer, audience and expiry; never store or forward a raw token; one hop, one token.
@@ -1162,7 +1238,7 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - Help and errors for registry exports: defined in section 7.3, Help and remedies. No longer open.
 - The command that drafts an answers file from an inventory: defined in section 8.3 (`ritvo review --draft`). No longer open. The sources for the Observe questions in section 8.3 remain open.
 - Config files with comments and trailing commas (section 7.1). VS Code documents `mcp.json` as accepting them; the reader accepts strict JSON only, so such a file is listed as unreadable.
-- How an evidence reference to a document is recorded (section 8.1). The cap for `asserted` answers is now defined in section 8.1, scoring rule 4.
+- How an evidence reference to a document is recorded: defined in section 8.1, Provenance. No longer open. The cap for answers that are not `observed` or `derived` is defined in section 8.1, scoring rule 4.
 - The migration of `review_version: 0` files: defined in section 8.1. No longer open.
 - Which design partner's platforms set the order of inspector sources after the registry readers.
 - Approval rules exported from ERP and procurement tools (for example SAP release strategies, Coupa approval chains, Workday business processes) as further DoA inputs (section 8.4). No export format is verified yet.
@@ -1170,7 +1246,7 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 - Roles held by more than one person: settled in sections 4.1, 8.2 and 8.5. No longer open.
 - Inventory as an input to `ritvo diagnose` (section 8.5), so that agents and tools found by the inspector, and their findings, join the intake. Not in the first version.
 - A starter control mapping in the gap report (section 8.5). The inspect report has one (section 7.2); whether the gap report shares it is open.
-- Whether `ritvo init --questionnaire` (section 6.3) writes the same draft from typed answers or only the parts that intake files cannot give.
+- Whether `ritvo init --questionnaire` writes the same draft from typed answers or only the parts that intake files cannot give: settled in section 8.7, which writes the full draft. No longer open.
 
 ## 13. Platform support and CI
 
@@ -1199,11 +1275,11 @@ Platform rules for contributors:
 
 ## 14. Phases
 
-The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, then 4 and 5. This section maps them to the sections of this spec and records status as of 12 November 2026. "Specified" means this spec defines it. "Built" means the code is on the main branch.
+The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, then 4 and 5. This section maps them to the sections of this spec and records status as of 18 November 2026. "Specified" means this spec defines it. "Built" means the code is on the main branch.
 
 | Phase | Spec sections in force | Built | Specified, not built |
 | --- | --- | --- | --- |
-| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5); the inspect report from one inventory (7.2); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (8.5); drafted answers for `agents.inventory`, `agents.owner` and `agents.reach` (8.3) | The findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers for the Observe questions (8.3); the report's comparison with a previous inventory, `--pdf` and `--redact` (7.2); the `documented` basis and its cap (8.1) |
+| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5); the inspect report from one inventory (7.2); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (8.5); drafted answers for `agents.inventory`, `agents.owner` and `agents.reach`, and the additive re-run with `--previous` (8.3); the `documented` basis and its cap (8.1); the interview (8.6); questionnaire init (8.7); the findings `agent.no_owner`, `tool.destructive_unowned` and `identity.shared_key_name` (7) | The finding `mcp.no_auth`, which needs MCP introspection (7); drafted answers for the Observe questions (8.3); the report's comparison with a previous inventory, `--pdf` and `--redact` (7.2) |
 | 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | Nothing | All of it |
 | 2 Decide | 4.1 approval bands at ask time; 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
 | 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
@@ -1236,3 +1312,5 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.16-draft | 30 October 2026 | The draft `ritvo.yaml`, authority matrix and gap report defined and built (8.5): inputs and options, the four output files, what the draft holds and omits, the bases of facts, the eight gap rules with their gap and not known results and the files each reads, the matrix as CSV with formula-safe cells, the report, terminal and exit status. Section 4.1 gains lists of holders for `roles`, `agents[].mode` and a `null` tier in drafts. `people.csv` may repeat a person on several rows and the rows are merged (8.2). CLI row added (6.3). Open items updated (12). Build status updated (14). | Decisions on the diagnose draft: role holders as lists, repeated person rows, drafted decisions by tier, reach read as allow, intake facts as asserted |
 | 0.17-draft | 12 November 2026 | Drafted answers defined (8.3): `ritvo review --draft <inventory.json>`, the draft as a separate file with `draft: true` that `ritvo review` refuses, basis `derived` with the inventory file's SHA-256 as evidence, and the drafting rules for `agents.inventory`, `agents.owner` and `agents.reach`. `escalation.expiry`, `policy_change.second_person`, `policy_change.owners` and `policy_change.versioning` moved from Derive to Ask because an inventory holds no source for them. CLI row added (6.3). Open items updated (12). | Decisions on drafted answers: `ritvo review --draft`, derive only what the inventory supports |
 | 0.18-draft | 12 November 2026 | Drafted answers built (8.3) and the build status brought up to date (14). No rule changed. | Pull request for drafted answers |
+| 0.19-draft | 18 November 2026 | Phase 0 close-out defined. Additive re-run (8.3): a per-question digest in the drafted evidence and `--previous`, carrying answers whose source is unchanged. The `documented` evidence reference settled (8.1). Interview (8.6): plain prompts for the questions still not answered, recorded as `asserted` in a new file. Questionnaire init (8.7): a full first draft from typed answers, with defaults per tier and a saved `questionnaire.yaml`. CLI rows (6.3) and open items (12) updated. | Decisions on the phase 0 close-out: full draft from typed answers, interview without a model, per-question digest |
+| 0.20-draft | 18 November 2026 | Phase 0 close-out built (8.1, 8.3, 8.6, 8.7) and the build status brought up to date (14). The finding `tool.destructive_unowned` was built earlier and is now listed as built; `mcp.no_auth` waits for MCP introspection. No rule changed. | Pull request for the phase 0 close-out |

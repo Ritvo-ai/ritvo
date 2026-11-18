@@ -132,15 +132,15 @@ def _inventory_file(tmp_path: Path, data: dict[str, Any] | None = None) -> Path:
 
 def test_draft_file_shape_and_evidence(tmp_path: Path) -> None:
     path = _inventory_file(tmp_path)
-    _, text = draft_from_file(path)
-    parsed = yaml.safe_load(text)
+    parsed = yaml.safe_load(draft_from_file(path).text)
     assert parsed["review_version"] == 1
     assert parsed["draft"] is True
     assert "organisation" not in parsed
     assert set(parsed["answers"]) == {"agents.inventory", "agents.owner", "agents.reach"}
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     for basis in parsed["basis"].values():
-        assert basis == {"source": "derived", "evidence": f"inventory.json sha256:{digest}"}
+        assert basis["source"] == "derived"
+        assert basis["evidence"].startswith(f"inventory.json sha256:{digest} question sha256:")
         assert str(tmp_path) not in basis["evidence"]
 
 
@@ -208,3 +208,129 @@ def test_invalid_inventory_writes_nothing(tmp_path: Path) -> None:
     assert not (tmp_path / "answers.draft.yaml").exists()
     with pytest.raises(InventoryError):
         draft_from_file(bad)
+
+
+# Additive re-run
+
+
+def _previous(tmp_path: Path, edit: str = "") -> Path:
+    first = _inventory_file(tmp_path)
+    assert runner.invoke(app, ["review", "--draft", str(first)]).exit_code == 0
+    text = (tmp_path / "answers.draft.yaml").read_text(encoding="utf-8") + edit
+    previous = tmp_path / "previous.yaml"
+    previous.write_text(text, encoding="utf-8")
+    (tmp_path / "answers.draft.yaml").unlink()
+    return previous
+
+
+def _rescan(tmp_path: Path, data: dict[str, Any]) -> Path:
+    path = tmp_path / "scan2" / "inventory.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _same() -> dict[str, Any]:
+    return _data([_agent("a", "alice")], [_tool("t", "high", ["a"])])
+
+
+def test_an_unchanged_source_is_carried_with_a_persons_edit(tmp_path: Path) -> None:
+    previous = _previous(tmp_path)
+    parsed = yaml.safe_load(previous.read_text(encoding="utf-8"))
+    parsed["answers"]["agents.inventory"] = "complete"
+    previous.write_text(yaml.safe_dump(parsed), encoding="utf-8")
+    scan = _rescan(tmp_path, _same())
+    result = runner.invoke(app, ["review", "--draft", str(scan), "--previous", str(previous)])
+    assert result.exit_code == 0, result.output
+    out = yaml.safe_load((tmp_path / "scan2" / "answers.draft.yaml").read_text(encoding="utf-8"))
+    assert out["answers"]["agents.inventory"] == "complete"
+    assert "agents.inventory  complete  carried" in result.output
+    assert out["draft"] is True
+
+
+def test_a_changed_source_is_drafted_again(tmp_path: Path) -> None:
+    previous = _previous(tmp_path)
+    changed = _data([_agent("a", None)], [_tool("t", "high", ["a"])])
+    scan = _rescan(tmp_path, changed)
+    result = runner.invoke(app, ["review", "--draft", str(scan), "--previous", str(previous)])
+    assert result.exit_code == 0, result.output
+    out = yaml.safe_load((tmp_path / "scan2" / "answers.draft.yaml").read_text(encoding="utf-8"))
+    assert out["answers"]["agents.owner"] == "unknown"
+    assert "agents.owner      unknown  changed (was all)" in result.output
+    assert "agents.reach      all  carried" in result.output
+    assert "agents.inventory  partial  carried" in result.output
+
+
+def test_other_answers_are_carried_unchanged(tmp_path: Path) -> None:
+    previous = _previous(tmp_path)
+    parsed = yaml.safe_load(previous.read_text(encoding="utf-8"))
+    parsed["organisation"] = "Example Ltd"
+    parsed["answers"]["approval.named"] = "named_role"
+    parsed["answers"]["agents.new_tools"] = "needs_decision"
+    parsed["basis"]["agents.new_tools"] = {
+        "source": "documented",
+        "evidence": "policy.pdf sha256:ab",
+    }
+    previous.write_text(yaml.safe_dump(parsed), encoding="utf-8")
+    before = previous.read_bytes()
+    scan = _rescan(tmp_path, _same())
+    result = runner.invoke(app, ["review", "--draft", str(scan), "--previous", str(previous)])
+    assert result.exit_code == 0, result.output
+    out = yaml.safe_load((tmp_path / "scan2" / "answers.draft.yaml").read_text(encoding="utf-8"))
+    assert out["organisation"] == "Example Ltd"
+    assert out["answers"]["approval.named"] == "named_role"
+    assert out["basis"]["agents.new_tools"]["source"] == "documented"
+    assert "2 other answers carried unchanged." in result.output
+    assert previous.read_bytes() == before
+
+
+def test_an_answer_with_no_question_digest_is_drafted_again(tmp_path: Path) -> None:
+    previous = _previous(tmp_path)
+    parsed = yaml.safe_load(previous.read_text(encoding="utf-8"))
+    for basis in parsed["basis"].values():
+        basis["evidence"] = "inventory.json sha256:" + "0" * 64
+    previous.write_text(yaml.safe_dump(parsed), encoding="utf-8")
+    scan = _rescan(tmp_path, _same())
+    result = runner.invoke(app, ["review", "--draft", str(scan), "--previous", str(previous)])
+    assert result.exit_code == 0, result.output
+    assert sum(" changed" in line for line in result.output.splitlines()) == 3
+
+
+def test_new_questions_are_new(tmp_path: Path) -> None:
+    previous = tmp_path / "previous.yaml"
+    previous.write_text("review_version: 1\nanswers: {}\n", encoding="utf-8")
+    scan = _rescan(tmp_path, _same())
+    result = runner.invoke(app, ["review", "--draft", str(scan), "--previous", str(previous)])
+    assert result.exit_code == 0, result.output
+    assert sum(line.endswith("  new") for line in result.output.splitlines()) == 3
+
+
+def test_previous_version_0_is_refused(tmp_path: Path) -> None:
+    previous = tmp_path / "previous.yaml"
+    previous.write_text("review_version: 0\nanswers: {}\n", encoding="utf-8")
+    scan = _rescan(tmp_path, _same())
+    result = runner.invoke(app, ["review", "--draft", str(scan), "--previous", str(previous)])
+    assert result.exit_code == 1
+    assert "review_version 0" in result.output
+    assert not (tmp_path / "scan2" / "answers.draft.yaml").exists()
+
+
+def test_previous_needs_draft_and_is_never_overwritten(tmp_path: Path) -> None:
+    previous = _previous(tmp_path)
+    assert runner.invoke(app, ["review", str(previous), "--previous", str(previous)]).exit_code == 1
+    scan = _rescan(tmp_path, _same())
+    result = runner.invoke(
+        app, ["review", "--draft", str(scan), "--previous", str(previous), "--out", str(previous)]
+    )
+    assert result.exit_code == 1
+
+
+def test_the_digest_ignores_names_it_does_not_use(tmp_path: Path) -> None:
+    first = draft_answers(Inventory.model_validate(_same()))
+    again = draft_answers(Inventory.model_validate(_same()))
+    assert [a.digest for a in first] == [a.digest for a in again]
+    other = draft_answers(
+        Inventory.model_validate(_data([_agent("a", "alice")], [_tool("t", "low", ["a"])]))
+    )
+    assert first[0].digest == other[0].digest
+    assert first[2].digest != other[2].digest

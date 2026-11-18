@@ -1,5 +1,6 @@
 """The `ritvo` command line."""
 
+import hashlib
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -26,9 +27,24 @@ from ritvo.diagnostic.gaps.rules import diagnose as run_diagnosis
 from ritvo.diagnostic.intake.columns import AGENTS, PEOPLE, TOOLS
 from ritvo.diagnostic.intake.reader import CORRECTED, Intake, IntakeError, fix_intake, load_intake
 from ritvo.diagnostic.intake.templates import write_templates
+from ritvo.diagnostic.questionnaire import (
+    DEFAULT_COOL_OFF,
+    DEFAULT_HIGH_LADDER,
+    DEFAULT_TIMEOUT,
+    DRAFT_FILE,
+    QUESTIONNAIRE_FILE,
+    TTL_BY_TIER,
+    QuestionnaireError,
+    draft_text,
+    load_questionnaire,
+    parse_questionnaire,
+    questionnaire_text,
+)
 from ritvo.diagnostic.report.write import DIAGNOSIS_DIR, write_diagnosis
 from ritvo.diagnostic.review.draft import draft_from_file
-from ritvo.diagnostic.review.questions import LEVEL_LABELS, QUESTIONS
+from ritvo.diagnostic.review.interview import interview as run_interview
+from ritvo.diagnostic.review.interview import valid_reply
+from ritvo.diagnostic.review.questions import LEVEL_LABELS, QUESTIONS, UNKNOWN, Question
 from ritvo.diagnostic.review.report import write_report
 from ritvo.diagnostic.review.scoring import (
     OLD_REVIEW_VERSION,
@@ -48,7 +64,7 @@ from ritvo.inspector.config import (
     read_configs,
     system_name,
 )
-from ritvo.inspector.inventory import InventoryError, load_inventory, write_inventory
+from ritvo.inspector.inventory import ID_PATTERN, InventoryError, load_inventory, write_inventory
 from ritvo.inspector.owners import OverlayError, apply_overlay, read_overlay
 from ritvo.inspector.registry import EXPORTS, FileResult, inspect_registry, parse_source
 from ritvo.inspector.report import sha256_of
@@ -103,10 +119,36 @@ def review(
             "removes the draft line, and never written over a file.",
         ),
     ] = False,
+    previous: Annotated[
+        Path | None,
+        typer.Option(
+            "--previous",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="With --draft: carry forward the answers of this earlier file whose source "
+            "has not changed.",
+        ),
+    ] = None,
+    interview: Annotated[
+        bool,
+        typer.Option(
+            "--interview",
+            help="Ask the questions the answers file leaves open and record each as asserted, "
+            "in a new file.",
+        ),
+    ] = False,
 ) -> None:
     """Score an authority gap review and write a one-page result. Reads files only."""
+    if draft and interview:
+        _fail("--draft and --interview cannot be combined")
+    if previous is not None and not draft:
+        _fail("--previous needs --draft")
     if draft:
-        _draft_answers(answers, out)
+        _draft_answers(answers, out, previous)
+        return
+    if interview:
+        _interview(answers, out)
         return
     try:
         result = score(load_answers(answers))
@@ -128,24 +170,208 @@ def review(
     typer.echo(f"Wrote {target}")
 
 
-def _draft_answers(inventory: Path, out: Path | None) -> None:
+def _draft_answers(inventory: Path, out: Path | None, previous: Path | None) -> None:
     target = out if out is not None else inventory.parent / "answers.draft.yaml"
-    if _same_file(target, inventory):
-        _fail(f"--out {target} is the inventory itself; choose another path")
+    if _same_file(target, inventory) or (previous is not None and _same_file(target, previous)):
+        _fail(f"--out {target} is an input file; choose another path")
     if target.exists():
         _fail(f"{target} already exists")
     try:
-        drafted, text = draft_from_file(inventory)
-    except InventoryError as exc:
+        draft = draft_from_file(inventory, previous)
+    except (InventoryError, ReviewError) as exc:
         _fail(str(exc))
-    target.write_text(text, encoding="utf-8", newline="\n")
-    width = max(len(item.question) for item in drafted)
-    for item in drafted:
-        typer.echo(f"{item.question:<{width}}  {item.answer}")
-    left = len(QUESTIONS) - len(drafted)
-    typer.echo(f"{left} questions are left to a person.")
+    target.write_text(draft.text, encoding="utf-8", newline="\n")
+    width = max(len(line.question) for line in draft.lines)
+    for line in draft.lines:
+        was = f" (was {line.previous})" if line.previous is not None else ""
+        status = f"  {line.status}{was}" if previous is not None else ""
+        typer.echo(f"{line.question:<{width}}  {line.answer}{status}")
+    if previous is not None:
+        typer.echo(f"{draft.other_carried} other answers carried unchanged.")
+    answered = len(draft.lines) + draft.other_carried
+    typer.echo(f"{len(QUESTIONS) - answered} questions are left to a person.")
     typer.echo(f"Wrote {target}")
     typer.echo("Read it, change what is wrong and remove the draft line before ritvo review.")
+
+
+def _interview(answers: Path, out: Path | None) -> None:
+    target = out if out is not None else answers.with_name(f"{answers.stem}.interview.yaml")
+    if _same_file(target, answers):
+        _fail(f"--out {target} is the answers file itself; choose another path")
+    if target.exists():
+        _fail(f"{target} already exists")
+
+    def ask(question: Question) -> str:
+        typer.echo(f"\n{question.id}: {question.text}")
+        typer.echo(f"  options: {', '.join([*question.options, UNKNOWN])}")
+        return _prompt(
+            "  answer (enter to leave open)", "", lambda reply: valid_reply(question, reply)
+        )
+
+    try:
+        result = run_interview(answers, ask)
+    except ReviewError as exc:
+        _fail(str(exc))
+    if result is None:
+        typer.echo("Every question already has an answer. Nothing was written.")
+        return
+    text, recorded = result
+    target.write_text(text, encoding="utf-8", newline="\n")
+    typer.echo(f"\n{recorded} answers recorded as asserted.")
+    typer.echo(f"Wrote {target}")
+
+
+@app.command()
+def init(
+    questionnaire: Annotated[
+        bool,
+        typer.Option(
+            "--questionnaire",
+            help="Ask a short fixed set of questions and write a first draft ritvo.yaml.",
+        ),
+    ] = False,
+    out: Annotated[
+        Path,
+        typer.Option("--out", file_okay=False, help="The folder to write to."),
+    ] = Path("ritvo-init"),
+    no_input: Annotated[
+        bool,
+        typer.Option("--no-input", help="Ask nothing; read questionnaire.yaml in the folder."),
+    ] = False,
+) -> None:
+    """Draft a first ritvo.yaml from typed answers. Reads and writes files only."""
+    if not questionnaire:
+        _fail("only ritvo init --questionnaire is built so far")
+    if out.exists() and not out.is_dir():
+        _fail(f"{out} is not a folder")
+    answers_file = out / QUESTIONNAIRE_FILE
+    draft_file = out / DRAFT_FILE
+    if draft_file.exists():
+        _fail(f"{draft_file} already exists")
+    if no_input:
+        if not answers_file.is_file():
+            _fail(f"{answers_file} does not exist; run without --no-input to answer the questions")
+        try:
+            answers, digest = load_questionnaire(answers_file)
+            text = draft_text(answers, digest)
+        except QuestionnaireError as exc:
+            _fail(str(exc))
+        out.mkdir(parents=True, exist_ok=True)
+        draft_file.write_text(text, encoding="utf-8", newline="\n")
+    else:
+        if answers_file.exists():
+            _fail(f"{answers_file} already exists; use --no-input to draft from it")
+        data = _ask_questionnaire()
+        try:
+            answers = parse_questionnaire(data)
+        except QuestionnaireError as exc:
+            _fail(str(exc))
+        saved = questionnaire_text(data)
+        digest = hashlib.sha256(saved.encode("utf-8")).hexdigest()
+        out.mkdir(parents=True, exist_ok=True)
+        answers_file.write_text(saved, encoding="utf-8", newline="\n")
+        draft_file.write_text(draft_text(answers, digest), encoding="utf-8", newline="\n")
+    typer.echo(f"Read {len(answers.agents)} agents and {len(answers.tools)} tools.")
+    ttls = ", ".join(f"{tier} {minutes}" for tier, minutes in TTL_BY_TIER.items())
+    typer.echo(f"Defaults applied: approval expiry in minutes by tier ({ttls}); ask on every tier")
+    typer.echo("except low, which acts; nothing is deny.")
+    if not no_input:
+        typer.echo(f"Wrote {answers_file}")
+    typer.echo(f"Wrote {draft_file}")
+
+
+def _ids(text: str) -> list[str]:
+    return [item.strip() for item in text.split(";") if item.strip()]
+
+
+def _id_problem(value: str) -> str | None:
+    return None if ID_PATTERN.fullmatch(value) else "use 1 to 64 of a-z, 0-9, . _ - (no spaces)"
+
+
+def _id_list_problem(value: str) -> str | None:
+    for item in _ids(value):
+        problem = _id_problem(item)
+        if problem is not None:
+            return problem
+    return None
+
+
+def _ask_questionnaire() -> dict[str, object]:
+    """Prompt for the questionnaire of section 8.7. Prompts are interim; the file rules."""
+    typer.echo("Tools first. Enter a tool ID, or press enter to finish.")
+    tools: list[dict[str, object]] = []
+    while True:
+        tool_id = _prompt("Tool ID", "", lambda v: None if not v else _id_problem(v))
+        if not tool_id:
+            break
+        tier = _prompt(
+            "  Tier (low, medium, high)",
+            "high",
+            lambda v: None if v in TIERS else "low, medium or high",
+        )
+        team = _prompt(
+            "  Owner team (enter if none)", "", lambda v: None if not v else _id_problem(v)
+        )
+        tools.append({"id": tool_id, "tier": tier, **({"owner_team": team} if team else {})})
+    typer.echo("Agents. Enter an agent ID, or press enter to finish.")
+    agents: list[dict[str, object]] = []
+    while True:
+        agent_id = _prompt("Agent ID", "", lambda v: None if not v else _id_problem(v))
+        if not agent_id:
+            break
+        owner = _prompt("  Owner (a person ID)", "", lambda v: _id_problem(v) if v else "required")
+        team = _prompt(
+            "  Owner team (enter if none)", "", lambda v: None if not v else _id_problem(v)
+        )
+        mode = _prompt(
+            "  Mode (attended, unattended, both)",
+            "attended",
+            lambda v: None if v in MODES else "attended, unattended or both",
+        )
+        used = _prompt("  Tools it can use, separated by ;", "", _id_list_problem)
+        agents.append(
+            {
+                "id": agent_id,
+                "owner": owner,
+                **({"owner_team": team} if team else {}),
+                "mode": mode,
+                "tools": _ids(used),
+            }
+        )
+    roles: dict[str, list[str]] = {}
+    for role in ("policy_author", "escalation_reviewer"):
+        holders = _prompt(
+            f"Who is the {role}? (person IDs separated by ;)",
+            "",
+            lambda v: _id_list_problem(v) or (None if _ids(v) else "required"),
+        )
+        roles[role] = _ids(holders)
+    cool_off = _prompt(
+        "Cool-off minutes",
+        str(DEFAULT_COOL_OFF),
+        lambda v: None if v.isdigit() and int(v) >= 1 else "a whole number, at least 1",
+    )
+    timeout = _prompt(
+        "Minutes before an unanswered ask moves up",
+        str(DEFAULT_TIMEOUT),
+        lambda v: None if v.isdigit() and int(v) >= 1 else "a whole number, at least 1",
+    )
+    ladder = _prompt(
+        "High tier ladder, roles separated by ;", ";".join(DEFAULT_HIGH_LADDER), _id_list_problem
+    )
+    return {
+        "questionnaire_version": 1,
+        "agents": agents,
+        "tools": tools,
+        "roles": roles,
+        "cool_off_minutes": int(cool_off),
+        "ladder_timeout_minutes": int(timeout),
+        "high_ladder": _ids(ladder),
+    }
+
+
+TIERS = ("low", "medium", "high")
+MODES = ("attended", "unattended", "both")
 
 
 def _summary(intake: Intake) -> list[str]:
