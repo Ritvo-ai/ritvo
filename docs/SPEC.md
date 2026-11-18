@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.19-draft · 18 November 2026 · Licence: Apache-2.0
+Version 0.20-draft · 18 November 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -1176,6 +1176,8 @@ The draft is built by the same builder as `ritvo diagnose` (section 8.5), from t
 | `roles` | The roles of the questionnaire, each a list of person IDs, and `cool_off_minutes` |
 | `ladders` | `high` is `high_ladder`; `timeout_minutes` is `ladder_timeout_minutes` |
 
+An example for a fictional organisation is in `examples/init/questionnaire.yaml`.
+
 Not drafted, as in section 8.5: `enforcement`, `identity`, `secrets`, `policy_sections` and `tools[].match`. The draft is not expected to pass `ritvo check`. Terminal: the number of agents and tools read, the defaults applied, and the paths written. Exit status 0 when the draft is written.
 
 ## 9. Security requirements
@@ -1277,7 +1279,7 @@ The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, th
 
 | Phase | Spec sections in force | Built | Specified, not built |
 | --- | --- | --- | --- |
-| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5); the inspect report from one inventory (7.2); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (8.5); drafted answers for `agents.inventory`, `agents.owner` and `agents.reach` (8.3) | The findings `mcp.no_auth` and `tool.destructive_unowned` (7); drafted answers for the Observe questions (8.3); the report's comparison with a previous inventory, `--pdf` and `--redact` (7.2); the `documented` basis and its cap (8.1) |
+| 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5); the inspect report from one inventory (7.2); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (8.5); drafted answers for `agents.inventory`, `agents.owner` and `agents.reach`, and the additive re-run with `--previous` (8.3); the `documented` basis and its cap (8.1); the interview (8.6); questionnaire init (8.7); the findings `agent.no_owner`, `tool.destructive_unowned` and `identity.shared_key_name` (7) | The finding `mcp.no_auth`, which needs MCP introspection (7); drafted answers for the Observe questions (8.3); the report's comparison with a previous inventory, `--pdf` and `--redact` (7.2) |
 | 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | Nothing | All of it |
 | 2 Decide | 4.1 approval bands at ask time; 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
 | 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
@@ -1311,3 +1313,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.17-draft | 12 November 2026 | Drafted answers defined (8.3): `ritvo review --draft <inventory.json>`, the draft as a separate file with `draft: true` that `ritvo review` refuses, basis `derived` with the inventory file's SHA-256 as evidence, and the drafting rules for `agents.inventory`, `agents.owner` and `agents.reach`. `escalation.expiry`, `policy_change.second_person`, `policy_change.owners` and `policy_change.versioning` moved from Derive to Ask because an inventory holds no source for them. CLI row added (6.3). Open items updated (12). | Decisions on drafted answers: `ritvo review --draft`, derive only what the inventory supports |
 | 0.18-draft | 12 November 2026 | Drafted answers built (8.3) and the build status brought up to date (14). No rule changed. | Pull request for drafted answers |
 | 0.19-draft | 18 November 2026 | Phase 0 close-out defined. Additive re-run (8.3): a per-question digest in the drafted evidence and `--previous`, carrying answers whose source is unchanged. The `documented` evidence reference settled (8.1). Interview (8.6): plain prompts for the questions still not answered, recorded as `asserted` in a new file. Questionnaire init (8.7): a full first draft from typed answers, with defaults per tier and a saved `questionnaire.yaml`. CLI rows (6.3) and open items (12) updated. | Decisions on the phase 0 close-out: full draft from typed answers, interview without a model, per-question digest |
+| 0.20-draft | 18 November 2026 | Phase 0 close-out built (8.1, 8.3, 8.6, 8.7) and the build status brought up to date (14). The finding `tool.destructive_unowned` was built earlier and is now listed as built; `mcp.no_auth` waits for MCP introspection. No rule changed. | Pull request for the phase 0 close-out |

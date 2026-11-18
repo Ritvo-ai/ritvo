@@ -426,7 +426,10 @@ def test_report_shows_basis_and_coverage(tmp_path: Path) -> None:
 def test_report_says_why_an_area_was_capped(tmp_path: Path) -> None:
     review = _review(tmp_path, ALL_IN_PLACE)
     html = render_html(review, date(2026, 10, 19))
-    assert html.count("Capped at partial: every answer is asserted, with no evidence") == 1
+    assert (
+        html.count("Capped at partial: no answer is observed or derived, so none rests on evidence")
+        == 1
+    )
     html = render_html(
         _review(tmp_path, ALL_IN_PLACE, basis={"agents.owner": "derived"}), date(2026, 10, 19)
     )

@@ -1,0 +1,24 @@
+# Fictional organisation. Written by ritvo init --questionnaire; a person or a UI may write it too.
+questionnaire_version: 1
+agents:
+  - id: acme.research
+    owner: alice
+    owner_team: research
+    mode: attended
+    tools: [broker.quote, broker.order]
+  - id: acme.reporting
+    owner: bob
+    mode: unattended
+    tools: [broker.quote]
+tools:
+  - id: broker.quote
+    tier: low
+  - id: broker.order
+    tier: high
+    owner_team: risk
+roles:
+  policy_author: [alice]
+  escalation_reviewer: [bob, carol]
+cool_off_minutes: 60
+ladder_timeout_minutes: 30
+high_ladder: [escalation_reviewer]

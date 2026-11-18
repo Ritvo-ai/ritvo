@@ -168,7 +168,7 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
         <span class="evidence">Evidence: {{ area.evidence }} of {{ area.questions | length }}</span>
       </p>
       {% if area.asserted_cap %}
-      <p class="count">Capped at partial: every answer is asserted, with no evidence</p>
+      <p class="count">Capped at partial: no answer is observed or derived, so none rests on evidence</p>
       {% endif %}
     </div>
     {% endfor %}
@@ -219,7 +219,7 @@ code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
 
   <footer class="foot">
     <p>The answers are self-reported. This result is not a conformity assessment and does not test any system.</p>
-    <p>Levels: an area with any gap is a gap; an area with unanswered questions, or whose answers are all asserted, cannot be in place. Evidence is a count of answers with a basis of derived or observed. There is no total score.</p>
+    <p>Levels: an area with any gap is a gap; an area with unanswered questions, or in which no answer is observed or derived, cannot be in place. Evidence is a count of answers with a basis of derived or observed. There is no total score.</p>
   </footer>
 </div>
 </body>

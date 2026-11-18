@@ -22,7 +22,7 @@ REVIEW_VERSION = 1
 # Version 0 files are still read; their unknown answers score needs_validation.
 OLD_REVIEW_VERSION = 0
 
-Source = Literal["derived", "observed", "asserted"]
+Source = Literal["derived", "observed", "documented", "asserted"]
 EVIDENCE_SOURCES = ("derived", "observed")
 
 
@@ -41,6 +41,8 @@ class _AnswersFile(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     review_version: StrictInt
+    # Only a draft carries this (section 8.3); a file with draft: true is refused unless allowed.
+    draft: bool = False
     organisation: str | None = None
     # YAML reads a bare yes or no as a boolean; both are option IDs, so they are mapped back.
     answers: dict[str, str | bool | None] = Field(default_factory=dict)
@@ -62,6 +64,7 @@ class Answers:
     notes: dict[str, str]
     sha256: str
     version: int
+    draft: bool = False
 
 
 @dataclass(frozen=True)
@@ -85,7 +88,7 @@ class AreaResult:
     area: Area
     level: Level
     questions: tuple[QuestionResult, ...]
-    # Scoring rule 4 lowered the area: every answer is asserted.
+    # Scoring rule 4 lowered the area: no answer is observed or derived.
     asserted_cap: bool
 
     @property
@@ -133,7 +136,7 @@ def _answer_text(value: str | bool | None) -> str | None:
     return value
 
 
-def load_answers(path: Path) -> Answers:
+def load_answers(path: Path, allow_draft: bool = False) -> Answers:
     raw = path.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     try:
@@ -148,7 +151,8 @@ def load_answers(path: Path) -> Answers:
         raise ReviewError(f"the answers file is not valid YAML{where}") from None
     if not isinstance(data, dict):
         raise ReviewError("the answers file must be a YAML mapping")
-    if data.get("draft") is True:
+    draft = data.get("draft") is True
+    if draft and not allow_draft:
         raise ReviewError(
             "this file is a draft; read it, change what is wrong and remove the draft line, "
             "then run the review again"
@@ -204,18 +208,19 @@ def load_answers(path: Path) -> Answers:
         notes=dict(parsed.notes),
         sha256=digest,
         version=parsed.review_version,
+        draft=draft,
     )
 
 
 def _area_level(results: tuple[QuestionResult, ...]) -> tuple[Level, bool]:
-    """The area's level, and whether rule 4 (every answer asserted) lowered it."""
+    """The area's level, and whether rule 4 (no answer observed or derived) lowered it."""
     answered = [result for result in results if result.answer is not None]
     if not answered:
         return Level.NOT_ANSWERED, False
     level = min((result.level for result in answered), key=LEVEL_RANK.__getitem__)
     if level is not Level.IN_PLACE:
         return level, False
-    asserted_cap = all(result.source == "asserted" for result in answered)
+    asserted_cap = not any(result.source in EVIDENCE_SOURCES for result in answered)
     if len(answered) < len(results) or asserted_cap:
         return Level.PARTIAL, asserted_cap
     return level, False
