@@ -38,11 +38,14 @@ class ClaimsMap(_Model):
     actor: DottedPath
     scopes: DottedPath
     actor_platform: DottedPath | None = None
+    chain: DottedPath | None = None
 
 
 class Issuer(_Model):
     name: Id
-    jwks_url: Annotated[StrictStr, Field(pattern=r"^(secret://\S+|https://\S+)$")]
+    # The `iss` claim of its tokens; the name if not given.
+    issuer: StrictStr | None = None
+    jwks_url: Annotated[StrictStr, Field(pattern=r"^(secret://\S+|https://\S+|file://\S+)$")]
     audience: StrictStr
     claims_map: ClaimsMap | None = None
 
@@ -51,6 +54,7 @@ class Identity(_Model):
     issuers: list[Issuer]
     claims_map: ClaimsMap | None = None
     unattended: Literal["require_owner", "allow"] = "require_owner"
+    jwks_leeway_seconds: Annotated[StrictInt, Field(ge=0)] = 60
 
 
 class Secrets(_Model):
@@ -131,6 +135,19 @@ class LedgerConfig(_Model):
     path: StrictStr = "ritvo-ledger.db"
 
 
+class BundleConfig(_Model):
+    path: StrictStr = "ritvo-bundle.json"
+    keys: StrictStr = "ritvo-keys.json"
+
+
+class DecisionService(_Model):
+    url: Annotated[
+        StrictStr, Field(pattern=r"^(https://\S+|http://(localhost|127\.0\.0\.1)(:\d+)?(/\S*)?)$")
+    ]
+    key_id: Id
+    key: Annotated[StrictStr, Field(pattern=r"^secret://\S+$")]
+
+
 class Config(_Model):
     mode: Literal["observe", "enforce"] | None = None
     profile: Literal["local", "cloud"] | None = None
@@ -144,6 +161,9 @@ class Config(_Model):
     roles: Roles | None = None
     ladders: Ladders | None = None
     ledger: LedgerConfig = Field(default_factory=LedgerConfig)
+    bundle: BundleConfig = Field(default_factory=BundleConfig)
+    decision_service: DecisionService | None = None
+    fail_open_low: bool = False
 
     def role_holders(self) -> dict[str, list[str]]:
         """Role name to person IDs. A single ID is a list of one."""

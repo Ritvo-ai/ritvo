@@ -64,7 +64,11 @@ jobs:
           python -m venv /tmp/lic
           /tmp/lic/bin/pip install . pip-licenses==5.5.5
           /tmp/lic/bin/pip-licenses --from=mixed --format=markdown
+          # Two named exceptions, each approved by the maintainer. cedarpy declares no licence in
+          # its metadata; its repository and the LICENSE file in its wheel are Apache-2.0 (checked
+          # 2026-11-23). certifi (CA certificates, pulled in by httpx) is MPL-2.0, used unmodified.
           /tmp/lic/bin/pip-licenses --from=mixed --partial-match \
+            --ignore-packages cedarpy certifi \
             --allow-only="MIT;BSD;Apache;ISC;PSF;Python Software Foundation"
 
   secrets:

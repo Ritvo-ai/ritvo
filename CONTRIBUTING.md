@@ -84,7 +84,7 @@ The repository is public.
 
 ## Dependencies
 
-Runtime dependencies must be under Apache-2.0, MIT, BSD, ISC, PSF or a similar permissive licence. Open an issue before proposing a dependency under any other licence. CI checks the licences of runtime dependencies.
+Runtime dependencies must be under Apache-2.0, MIT, BSD, ISC, PSF or a similar permissive licence. Open an issue before proposing a dependency under any other licence. CI checks the licences of runtime dependencies, with two named exceptions approved by the maintainer: `cedarpy`, which declares no licence in its metadata but ships the Apache-2.0 text, and `certifi`, which is MPL-2.0 and used unmodified.
 
 ## Pull requests
 

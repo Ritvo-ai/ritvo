@@ -24,9 +24,14 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  "cedarpy==4.12.2",
+  "cryptography>=45",
+  "fastapi>=0.115",
+  "httpx>=0.28",
   "jinja2>=3.1.6",
   "keyring>=25.7",
   "pydantic>=2.14",
+  "pyjwt>=2.10",
   "pyyaml>=6.0.3",
   "rfc8785>=0.1.4",
   "typer>=0.20",
