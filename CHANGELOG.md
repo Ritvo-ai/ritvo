@@ -36,7 +36,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Secrets: the `secret://` reference, a get/set/delete interface, keyring, env_file and memory providers with one shared contract test suite, logged access by name, and a redactor.
 - The `ritvo.yaml` loader with complete and draft files, and `examples/trading-demo/ritvo.yaml`.
 - A test that the Governance OS and the enforcement side never import each other.
-- Runtime dependencies Jinja2, keyring, Pydantic, PyYAML and rfc8785 (all MIT, BSD or Apache-2.0).
+- Identity: token validation for RS256, ES256 and EdDSA with refusal codes, key sets fetched and cached, claims mapping, and the principal chain with scope widening handled by tier (`ritvo/enforcement/identity/`).
+- The signed policy bundle: `ritvo.yaml` compiled to four Cedar policy sets, signed with Ed25519, verified and kept by the enforcement point, which refuses an older version (`ritvo/governance_os/routing/`, `ritvo/enforcement/bundles/`).
+- The Cedar engine with a canary self-test that must pass before it is used, and the rule that a high tier tool always asks.
+- The evaluation core shared by every enforcement point, with observe mode recording what enforce mode would have decided.
+- The decision service: signed `POST /v1/events`, `GET /v1/bundles/latest` with an ETag, and `GET /v1/keys` (`ritvo/governance_os/service/`).
+- A crude mock control plane that refuses or passes calls and writes the ledger (`ritvo/mock_control_plane/`).
+- Runtime dependencies cedarpy, cryptography, FastAPI, httpx, Jinja2, keyring, PyJWT, Pydantic, PyYAML and rfc8785 (all MIT, BSD or Apache-2.0).
 - Continuous integration on Linux, macOS and Windows: lint, type check, tests, licence check, secret scan, wheel build and install test, CodeQL, and commit hygiene.
 - Release workflow: on a `v*` tag, test, build, check that the tag matches the package version, attest build provenance, and publish to PyPI by trusted publishing after approval.
 

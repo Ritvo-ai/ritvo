@@ -114,6 +114,12 @@ cli/main.py ──► inspector/* ──► connectors/registry/*
 | `test_ledger.py` | the hash chain, append-only triggers, tampering found by `audit verify`, redaction, `ritvo audit` |
 | `test_secrets.py` | one contract run against the keyring, env_file and memory providers; references; logged access |
 | `test_config.py` | `ritvo.yaml` loading rules, drafts, secrets as references |
+| `test_bundle.py` | compiling a bundle, its signature, the store: older versions, persistence, staleness |
+| `test_engine.py` | the Cedar engine, the canary, parameters read conservatively, engine errors |
+| `test_identity.py` | token validation and every refusal code, key set caching, the principal, the chain, widening |
+| `test_evaluate.py` | the evaluation core: outcomes, observe mode, fail modes, widening by tier, the ledger entry |
+| `test_service.py` | the decision service: signed events, idempotence, the bundle endpoint, keys |
+| `test_mock.py` | the mock gateway, and its events reaching the service |
 | `test_boundaries.py` | the Governance OS and the enforcement side never import each other |
 | `test_cli.py` | `--version` and the help screen |
 

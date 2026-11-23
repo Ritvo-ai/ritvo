@@ -2,9 +2,11 @@
 
 import json
 import sqlite3
+import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ritvo.adapter_contract.canonical import canonical, sha256_hex
 from ritvo.ledger.event import LedgerEntry, LedgerEvent
@@ -53,7 +55,8 @@ class Ledger:
     def __init__(self, path: Path = DEFAULT_PATH, redactor: Redactor = REDACTOR) -> None:
         self._redactor = redactor
         try:
-            self._db = sqlite3.connect(path, isolation_level=None)
+            self._db = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+            self._lock = threading.RLock()
             self._db.executescript(_SCHEMA)
         except sqlite3.Error as exc:
             raise LedgerError(f"cannot open the ledger {path.name}: {exc}") from None
@@ -64,6 +67,10 @@ class Ledger:
     def append(self, event: LedgerEvent) -> Entry:
         """Redact, chain and store an event. An `event_id` already stored writes nothing."""
         body = self._redactor.value(event.model_dump(mode="json"))
+        with self._lock:
+            return self._append(body)
+
+    def _append(self, body: dict[str, Any]) -> Entry:
         self._db.execute("BEGIN IMMEDIATE")
         try:
             row = self._db.execute(
@@ -87,8 +94,15 @@ class Ledger:
         assert cursor.lastrowid is not None  # noqa: S101 - set by a successful INSERT
         return Entry(cursor.lastrowid, LedgerEntry.model_validate(body))
 
+    def contains(self, event_id: str) -> bool:
+        return (
+            self._db.execute("SELECT 1 FROM ledger WHERE event_id = ?", (event_id,)).fetchone()
+            is not None
+        )
+
     def rows(self) -> Iterator[tuple[int, str, str]]:
-        yield from self._db.execute("SELECT seq, event_id, entry FROM ledger ORDER BY seq")
+        with self._lock:
+            yield from self._db.execute("SELECT seq, event_id, entry FROM ledger ORDER BY seq")
 
     def entries(self) -> list[Entry]:
         return [Entry(seq, LedgerEntry.model_validate_json(text)) for seq, _, text in self.rows()]

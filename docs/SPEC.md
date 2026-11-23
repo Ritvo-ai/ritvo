@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.22-draft · 23 November 2026 · Licence: Apache-2.0
+Version 0.25-draft · 23 November 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -118,9 +118,13 @@ Loading. `ritvo.yaml` is read as YAML into the shape above and validated before 
 - A complete file (the default when it is loaded) has `mode`, `profile`, at least one `enforcement` entry, `identity`, `secrets`, `roles` and `ladders`. `agents`, `tools`, `bindings` and `policy_sections` default to empty. Every tool has a `tier` and every agent has `owner` when `mode` is `enforce`.
 - A draft (what `ritvo diagnose` and `ritvo init --questionnaire` write) may leave out any section, and may hold a `null` `tier`, `owner` or `owner_team`.
 - Both: IDs follow the rule of section 8.2 and are unique within `enforcement`, `agents` and `tools`. A binding names an agent and a tool that are in the file. `decision` is `allow`, `ask` or `deny`. `limits` maps names to numbers. `tools[].match` has a `method` and a `path`. `approval_ttl_minutes` is a whole number of at least 1. Approval bands follow the rule above: ascending `up_to`, only the last without one, at least one band. `roles` maps a role name to a list of person IDs (a single ID is a list of one) and may hold `cool_off_minutes`, a whole number of at least 1. `ladders` maps `low`, `medium` and `high` to lists of role names and may hold `timeout_minutes`, a whole number of at least 1. Whether every role in a ladder has a holder is a check of `ritvo check`, not of loading.
-- Secrets. A key whose name contains `token`, `secret`, `password`, `passwd`, `api_key`, `apikey` or `private_key`, ignoring case and except a key ending `_ref`, with a non-empty string value that does not start with `secret://` is an error. The error names the key path, never the value. `identity.issuers[].jwks_url` is a `secret://` reference or an `https://` URL.
+- Secrets. A key whose name contains `token`, `secret`, `password`, `passwd`, `api_key`, `apikey` or `private_key`, ignoring case and except a key ending `_ref`, with a non-empty string value that does not start with `secret://` is an error. The error names the key path, never the value. `identity.issuers[].jwks_url` is a `secret://` reference, an `https://` URL, or for development a `file://` path. `identity.issuers[].issuer` is the `iss` claim of that issuer's tokens, and is the issuer's `name` when it is left out.
 - Claims maps. `claims_map` maps `subject`, `actor` and `scopes`, and optionally `actor_platform`, each to a dotted path into the token's claims, for example `act.sub`; no segment is empty. `identity.claims_map` is the default for every issuer, and `issuers[].claims_map` replaces it for that issuer. Every issuer must have one, from one place or the other.
 - `ledger.path` is optional: where the ledger (section 4.7) is kept, `ritvo-ledger.db` by default.
+- `bundle.path` is optional: where an enforcement point reads and keeps its signed bundle (section 4.6), `ritvo-bundle.json` by default. `bundle.keys` is optional: the JWK set of the keys it trusts to sign bundles, `ritvo-keys.json` by default. An enforcement point trusts no key that is not in that file; the keys the service publishes at `/v1/keys` are how an operator fills it in.
+- `decision_service` is optional: `url` (`https://`, or `http://` for localhost only), `key_id` (an ID) and `key` (a `secret://` reference to the HMAC key that signs requests, section 6.1). An enforcement point that has one fetches its bundle and sends its events there.
+- `fail_open_low` is optional, `false` by default. When `true`, a `low` tool passes when the enforcement point has no usable bundle or cannot reach the decision service (section 5.6).
+- `identity.jwks_leeway_seconds` is optional, 60 by default; the clock leeway when a token's expiry and not-before are checked (section 5.10).
 
 ### 4.2 Principal
 
@@ -154,6 +158,16 @@ Evaluation order for a request after the principal is built:
 3. Apply `deny` first, then parameter limits, then `ask`, then `allow`. A parameter beyond a limit becomes an ask for `medium` and `high` tiers and a deny for `low`.
 4. Evaluate ask-triggers (section 5.3).
 
+Evaluation with Cedar. The bundle carries four Cedar policy sets (section 4.6) and the entities they refer to. The engine answers a question of the form "does this set permit this request?" for each set in turn, and the outcome is the first that does:
+
+1. `deny`: the request is denied.
+2. `over_limit`: a binding matches but a parameter is beyond a limit. The outcome is ask for a `medium` or `high` tool and deny for a `low` tool.
+3. `ask`: the request is an ask.
+4. `allow`: the request is allowed.
+5. None permits it: there is no binding, an authority gap (step 2 above).
+
+The request is `principal` `Agent::"<actor.id>"`, `action` `Action::"call"` and `resource` `Tool::"<tool id>"`. The entities are each agent, with its `owner_team` as a parent `Team::"<team>"`, and each tool with its `tier`. The context is `{"mode": "attended" | "unattended", "scopes": [<strings>], "widened": <bool>, "params": {<name>: <integer>}}`. A parameter that is a whole number or a float goes into `params`, a float rounded up (a limit is an upper bound, so the more cautious reading is the larger value); any other value is left out. A limit named `max_<name>` bounds the parameter `<name>`, rounded down when the limit is not whole. A parameter that is left out, or missing, is not within its limit. The engine's answer is `Allow` or `Deny`; any other answer, including `NoDecision`, an exception, or a policy that does not parse, is an engine error (section 5.9).
+
 ### 4.4 Fingerprint
 
 `fingerprint = "sha256:" + hex(SHA-256(JCS(input)))`, where JCS is RFC 8785 JSON canonicalisation (section 4.9) and `input` is the object `{"accountable_human": {"id", "issuer"}, "actor": <actor.id>, "tool": <tool>, "action": <action>, "parameters": <parameters>}`. The accountable human is the subject, `{"id": subject.id, "issuer": subject.issuer}`, when there is one, and otherwise the owner, `{"id": owner, "issuer": null}`. If there is neither, it is `{"id": null, "issuer": null}` and the request is flagged `no_accountable_human`. Absent parameters are `{}`. The same agent acting for two users MUST produce two fingerprints.
@@ -186,15 +200,25 @@ Enforcement points hold public keys only. A grant is valid only if the signature
 bundle:
   policy_version: 42            # monotonically increasing integer
   issued_at: 2026-10-13T10:00:00Z
-  cedar: "<compiled Cedar policy text>"
+  cedar:                        # four policy sets, as Cedar text
+    deny: "<policies>"
+    over_limit: "<policies>"
+    ask: "<policies>"
+    allow: "<policies>"
+  entities: [ ... ]             # Cedar entities in JSON: agents with their team, tools with their tier
   tools: [ { id: broker.order, tier: high, approval_ttl_minutes: 15 } ]
-  bindings: [ { agent: acme.research, tool: broker.order, decision: ask, limits: { max_order_value: 50000 } } ]
-  fail_modes: { low: open, medium: closed, high: closed }
+  bindings: [ { id: b-1, agent: acme.research, tool: broker.order, decision: ask, limits: { max_order_value: 50000 } } ]
+  ask_trigger_rules: [ { id: tier, enabled: true }, { id: novelty, enabled: false } ]
+  fail_modes: { low: closed, medium: closed, high: closed }
   max_age_minutes: 60
-signature: "<detached signature by the Governance OS key>"
+signature: { key_id: gos-1, alg: EdDSA, value: "<base64url>" }
 ```
 
-An enforcement point MUST verify the signature and MUST refuse a bundle with a lower `policy_version` than the one it holds. A bundle older than `max_age_minutes` is stale (section 5.6).
+The file or message holds `bundle` and `signature`. The signature is Ed25519 over the canonical JSON (section 4.9) of `bundle`. The Governance OS signs with a key it holds in the secrets store (section 4.10) as `secret://ritvo/bundle-signing-key`: the 32-byte seed, base64url without padding. Enforcement points hold public keys only, published as a JWK set of `OKP` / `Ed25519` keys, each with a `kid` (section 6.2).
+
+An enforcement point MUST verify the signature against a key it trusts, and MUST refuse a bundle that does not verify, or one with a lower `policy_version` than the one it holds. A bundle older than `max_age_minutes` is stale (section 5.6). A binding's `id` is `b-<n>`, numbered from 1 in the order of `bindings` in `ritvo.yaml`. `fail_modes.low` is `open` only when `fail_open_low` is `true`.
+
+The Governance OS compiles the bundle from a complete `ritvo.yaml` (section 4.1). For each binding it writes one policy, `permit(principal == Agent::"<agent>", action == Action::"call", resource == Tool::"<tool>")`, into the set for its decision (`deny`, `ask` or `allow`). A binding with limits has, on its `allow` and `ask` policies, `when { context.params has <name> && context.params.<name> <= <limit> }` for each limit and, in `over_limit`, the same policy with `unless` over all of its limits. A `deny` binding has no limits. Every policy carries the annotation `@id("b-<n>")`.
 
 ### 4.7 Ledger event
 
@@ -374,6 +398,8 @@ Duplicate `ask.requested` events with the same fingerprint join the existing ask
 
 Ask-triggers are rule-based: authority gap, ambiguity, low confidence with high stakes, novelty (no matching precedent), goal conflict. Tier and novelty are built first; the others are rule hooks.
 
+In phase 1 the `tier` trigger is built: a request for a `high` tool is an ask whatever the policy says, unless it carries a valid grant (section 5.9, control 4). The `novelty` trigger needs the precedent log of phase 3, so until then the bundle lists it as `{"id": "novelty", "enabled": false}` and it never fires; an enforcement point never reads a missing precedent as novelty. The other triggers are not built. Which triggers fired is recorded in the ledger's `triggering_rule`.
+
 ### 5.4 Separation of duties
 
 - The accountable human, the agent's owner and the approver are compared, not agent identifiers.
@@ -433,6 +459,43 @@ The enforcement point evaluates a Cedar bundle with `cedarpy`, a community bindi
 5. An engine error is handled by the fail modes of section 5.6, so the high tier fails closed.
 6. A binding of the Cedar crate that we build ourselves is reconsidered before the first real adapter (phase 4).
 
+Controls 2, 4 and 5 are built with the engine. Control 1 (the lockfile with hashes, `pip-audit` and the SBOM) and control 3 (the official Cedar command line tool as an oracle in CI) are built with the middleware, and until then they are not in place. In use, the engine answers `Allow` or `Deny`; it answers `NoDecision` without raising when, for example, a number in the context is not a whole number, so any answer but those two is an engine error.
+
+### 5.10 Identity
+
+Validating the inbound token. The enforcement point accepts a JWT signed with `RS256`, `ES256` or `EdDSA`. Any other algorithm, including `none` and every `HS` algorithm, is refused. A token is refused, with a 401 and one of the codes below and never the token, when:
+
+| Code | When |
+| --- | --- |
+| `malformed` | It is not a JWT, or has no `kid`, `iss`, `aud` or `exp` |
+| `unknown_issuer` | `iss` is not the `issuer` of any configured issuer |
+| `unsupported_alg` | The algorithm is not one of the three |
+| `bad_signature` | The signature does not verify with the issuer's key for that `kid`, there is no such key, the key is not of the type the algorithm needs, or the key set cannot be had |
+| `expired` | The time is at or after `exp` plus `identity.jwks_leeway_seconds`, or before `nbf` minus it. `iat` is not checked |
+| `wrong_audience` | `aud`, a string or a list, does not contain the issuer's `audience`. A token for another audience, or an upstream token forwarded unchanged, ends here |
+
+The keys of an issuer come from its `jwks_url`, which is a `secret://` reference to a URL, an `https://` URL, or a `file://` path for development. They are fetched with a 5 second timeout and kept for 10 minutes; an unknown `kid` causes one new fetch, at most once a minute. A key set that cannot be fetched and is not cached means the token cannot be validated: the request is refused.
+
+Building the principal. The claims are read through the issuer's `claims_map` (section 4.1), each value a dotted path. `scopes` is a string of space-separated scopes or a list of strings.
+
+- If the `actor` claim is present, the request is attended: `subject` is `{id: <subject claim>, issuer: <the issuer's name>}` and `actor.id` is the actor claim.
+- If it is absent, the request is unattended: `subject` is null and the subject claim names the agent itself, so `actor.id` is the subject claim.
+- `actor.platform` is the `actor_platform` claim when mapped, otherwise null. `owner` is the `owner` of the agent with that ID in `ritvo.yaml`, or null if there is no such agent or it has none.
+- The chain has one hop, the enforcement point's own: `boundary` the enforcement point's, `audience` the issuer's audience, `scopes` the token's, and `token_ref` the `sha256:` and hex SHA-256 of the token's bytes. The token itself is not kept or passed on. If `claims_map` has an optional `chain` path whose claim is a list of earlier hops (each `boundary`, `audience`, `scopes`, `token_ref`), they come first, in order.
+- Scopes may narrow along the chain and MUST NOT widen. If any hop has a scope that the hop before it does not, the request is flagged `scope_widened`. The flag sets `widened` in the engine's context (section 4.3) and is recorded in the ledger. It is handled by tier: a `low` tool passes, a `medium` tool is an ask, a `high` tool is denied. When the chain has one hop there is nothing to compare and no flag.
+- In `unattended` mode with no `owner`, the request is flagged `no_owner`, and in `enforce` mode it is refused when `identity.unattended` is `require_owner` (section 5.1, step 3).
+
+### 5.11 The evaluation core
+
+One function serves every enforcement point: given a token, a tool, an action and parameters, it returns the outcome. It knows nothing of MCP or of a gateway, so each adapter is a thin layer over it. It does this in order:
+
+1. Validate the token and build the principal (section 5.10). A failure is refused, in either mode.
+2. Match the tool: the tool IDs of the bundle. If none matches, the tool is unknown (section 4.3, step 1).
+3. Evaluate the bundle (section 4.3) and apply the `tier` trigger (section 5.3), then the `scope_widened` handling (section 5.10). The result is the `would_decide`: `allow`, `deny` or `ask`.
+4. Compute the fingerprint (section 4.4). In `observe` mode the outcome is `allow` whatever `would_decide` is, and a refusal for a token failure is the only refusal. In `enforce` mode the outcome is `would_decide`.
+5. If the engine had an error, the fail mode of the tool's tier applies (section 5.6): `open` gives `allow`, otherwise `deny` with the reason `engine_error`; in `observe` mode the request passes either way.
+6. Return the outcome, the `would_decide`, the principal, the fingerprint, the `binding_id` if one matched, the flags, the triggers that fired, the policy version and a reason. The caller writes the ledger entry and, on an ask or deny, the event of section 6.1.
+
 ## 6. Interfaces
 
 ### 6.1 Adapter contract v0.2
@@ -491,7 +554,11 @@ A gateway adapter is supportable only if it can: identify each agent and, when p
 | `GET /v1/asks/{id}` | Read an ask | Approver session |
 | `POST /v1/asks/{id}/resolve` | Approve or reject | Approver session with passkey |
 
-Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Signature` (HMAC-SHA256 over method, path, timestamp and body hash). Requests with more than five minutes of clock skew MUST be refused. Presenting a grant: over MCP, in the request's `_meta` under the key `ai.ritvo/grant`, which works on every transport including stdio; over plain HTTP, the header `Ritvo-Grant: <jws>`.
+In phase 1 the service has the first three endpoints; asks are phase 2. The service is a small HTTP application that holds a ledger (section 4.7), the current signed bundle and the HMAC keys of the enforcement points it serves, each read by `key_id` from the secrets store as `secret://ritvo/ep-keys/<key_id>`.
+
+- `POST /v1/events` takes one message (section 6.1), written as canonical JSON, with the signature headers. It answers 200 with `{"accepted": true, "duplicate": <bool>, "seq": <n>}`. A bad signature, unknown key or skewed clock is 401 with the body `{"error": "invalid_signature"}`. A body that is not a valid message is 400 with `{"error": "invalid_message"}`. A type that only the Governance OS may send (`policy.published`, `decision.resolved`) is 400 and names the type. The reason for a refusal is written to the service's log and never to the caller. A message whose `event_id` has been accepted is `duplicate` and changes nothing. A message is written to the ledger as one entry with the `event_id` of the message: `ask.requested` as type `escalation` and decision `ask`; `call.denied` as type `decision` and decision `deny`; `grant.used` as type `grant`; `request.executed` and `request.expired` as type `resolution`, the second with decision `expired`; and `inventory.reported`, `limit.near` and `ledger.entry` as type `admin`. The principal, boundary, tool, action and fingerprint of the message are kept, and parameters are not.
+- `GET /v1/bundles/latest` answers with the signed bundle as canonical JSON and an `ETag` that is the hex SHA-256 of the body in double quotes. A request with a matching `If-None-Match` is 304. With no bundle it is 404.
+- `GET /v1/keys` answers with the JWK set of section 4.6.
 
 ### 6.3 CLI
 
@@ -520,6 +587,13 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | `ritvo approve <id>` | Resolve an ask |
 | `ritvo audit verify [--ledger <file>]`, `ritvo audit export [--ledger <file>] [--out <file>]` | Recheck the hash chain; write JSONL (section 4.7) |
 | `ritvo demo` | Run the demo MCP server end to end |
+
+### 6.4 The mock control plane
+
+The mock control plane is a crude test harness that behaves like an edge gateway. In phase 1 it has a registry of the agents in `ritvo.yaml`, a set of fake upstream tools, and one gateway call: it validates the caller's token and builds the principal, evaluates the bundle through the evaluation core (section 5.11), refuses or passes the call, runs the fake upstream when it passes, and writes the ledger. A refusal over HTTP is a 403 with the body of section 5.8. It holds and releases requests in phase 2. It does no provider proxying, spend enforcement or credential custody and MUST NOT be given any.
+
+
+Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Signature` (HMAC-SHA256 over method, path, timestamp and body hash). Requests with more than five minutes of clock skew MUST be refused. Presenting a grant: over MCP, in the request's `_meta` under the key `ai.ritvo/grant`, which works on every transport including stdio; over plain HTTP, the header `Ritvo-Grant: <jws>`.
 
 ## 7. Inspector
 
@@ -1346,7 +1420,7 @@ The PRD (section 7) defines the phases: 0 See, 1 Observe, 2 Decide, 3 Govern, th
 | Phase | Spec sections in force | Built | Specified, not built |
 | --- | --- | --- | --- |
 | 0 See | 4.8 inventory; 6.3 `review`, `diagnose`, `inspect`; 7, 7.1, 7.2, 7.3, 7.4, 7.5 inspector; 8, 8.1, 8.2, 8.3, 8.4 diagnostic; 9 assisted drafting and evidence rules | `ritvo review` with the scoring contract (8.1); intake templates and reader, `ritvo diagnose <dir>` with suggested fixes and `--fix` (8.2); DoA import, drafting the approval bands of 4.1 (8.4); inventory format (4.8); registry exports (7.3); owner overlay (7.4); config discovery (7.1); code and environment scan (7.5); the inspect report from one inventory (7.2); the draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` (8.5); drafted answers for `agents.inventory`, `agents.owner` and `agents.reach`, and the additive re-run with `--previous` (8.3); the `documented` basis and its cap (8.1); the interview (8.6); questionnaire init (8.7); the findings `agent.no_owner`, `tool.destructive_unowned` and `identity.shared_key_name` (7) | The finding `mcp.no_auth`, which needs MCP introspection (7); drafted answers for the Observe questions (8.3); the report's comparison with a previous inventory, `--pdf` and `--redact` (7.2) |
-| 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | The adapter contract v0.2 envelope, messages and request signing (6.1); canonical JSON, fingerprints and hashes (4.4, 4.9); the ledger with redaction and `ritvo audit verify` and `export` (4.7); the secrets interface with keyring, env_file and memory providers (4.10); `ritvo.yaml` loading (4.1) | Identity and the principal chain (5.1); routing; bundles and the Cedar controls (4.6, 5.9); the decision service and mock control plane (6.2); the MCP middleware, demo and onboarding commands; MCP introspection and `ritvo import` (7) |
+| 1 Observe | 4.2 principal; 4.3 binding evaluation; 4.4 fingerprint; 4.6 bundle; 4.7 ledger; 5.1 request evaluation; 5.6 fail modes; 5.7 modes; 5.8 refusal; 6.1, 6.2 contract and decision service; 7 MCP introspection | The adapter contract v0.2 envelope, messages and request signing (6.1); canonical JSON, fingerprints and hashes (4.4, 4.9); the ledger with redaction and `ritvo audit verify` and `export` (4.7); the secrets interface with keyring, env_file and memory providers (4.10); `ritvo.yaml` loading (4.1); the bundle, its compile and signature, and the Cedar engine with the canary (4.3, 4.6, 5.9 controls 2, 4 and 5); identity and the principal chain with scope widening (5.10); the evaluation core (5.11); the decision service's events, bundle and key endpoints (6.2); the mock control plane without hold and release (6.4) | Controls 1 and 3 of 5.9 (the lockfile with hashes, `pip-audit`, the SBOM, the Cedar CLI oracle); the MCP middleware, demo and onboarding commands; MCP introspection and `ritvo import` (7); drafted answers from observe records (8.3) |
 | 2 Decide | 4.1 approval bands at ask time; 4.5 grant; 5.2 ask lifecycle; 5.3 tiers; 5.4 separation of duties; 10 scenarios S01 to S21; 7 middleware self-report | Nothing | All of it |
 | 3 Govern | 5.3 novelty and precedent; 5.5 policy change and authority diff; metrics | Nothing | All of it |
 | 4 and 5 | Not yet specified beyond the platform note in 13 | Nothing | None |
@@ -1382,3 +1456,6 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.20-draft | 18 November 2026 | Phase 0 close-out built (8.1, 8.3, 8.6, 8.7) and the build status brought up to date (14). The finding `tool.destructive_unowned` was built earlier and is now listed as built; `mcp.no_auth` waits for MCP introspection. No rule changed. | Pull request for the phase 0 close-out |
 | 0.21-draft | 23 November 2026 | Phase 1 foundations defined. Canonical JSON and hashes (4.9). Secrets: reference grammar, interface, providers, logging and the redactor (4.10). `ritvo.yaml` loading rules and the secrets rule (4.1). Fingerprint, `parameter_hash` and `principal_digest` made exact (4.4). Ledger entry fields completed with `type`, `mode`, `would_decide` and `flags`; storage, redaction, verification and the audit commands (4.7). Policy engine controls for `cedarpy` (5.9). Adapter contract envelope, message fields and request signing (6.1); the grant carried in `_meta` (6.2). Open items for Cedar and the MCP SDK settled (12). | Decisions of 23 November 2026: `cedarpy` with controls, the official MCP SDK first, four pull requests for phase 1 |
 | 0.22-draft | 23 November 2026 | Phase 1 foundations built (4.1, 4.4, 4.7, 4.9, 4.10, 6.1) and the build status brought up to date (14). Corrections: `subject` follows `mode` and the owner of an unattended request is a policy matter; `Ritvo-Timestamp` is whole Unix seconds; the ledger cannot show that its last entries were removed; env_file value encoding. | Pull request for the phase 1 foundations |
+| 0.23-draft | 23 November 2026 | Policy, identity and the evaluation core defined (phase 1, second part). The bundle (4.6): four Cedar policy sets, entities, ask-trigger rules, a detached Ed25519 signature and the compile rules. Evaluation with Cedar (4.3): the four sets in order, the request, entities and context, and how limits and parameters are read. Config (4.1): `bundle.path`, `decision_service`, `fail_open_low`, `identity.jwks_leeway_seconds`. The `tier` trigger built, `novelty` listed and disabled until precedent (5.3). Controls built and not yet built (5.9). Identity (5.10): token validation and its codes, JWKS handling, the principal, the chain and scope widening handled by tier. The evaluation core (5.11). The decision service's events, bundle and key endpoints (6.2). The mock control plane (6.4). | Decisions: Cedar as four predicate sets, a scope-widening request is handled by tier, novelty waits for the precedent log |
+| 0.24-draft | 23 November 2026 | Policy, identity and the evaluation core built (4.3, 4.6, 5.9, 5.10, 5.11, 6.2, 6.4) and the build status brought up to date (14). Corrections found while building: time claims are checked against the validator's own clock and `iat` is not checked; a key of the wrong type for the algorithm is a bad signature; `jwks_url` may be `file://` for development and an issuer has an `issuer` (the `iss` claim); `bundle.keys` names the trusted signing keys. | Pull request for policy, identity and the decision service |
+| 0.25-draft | 23 November 2026 | The decision service no longer returns the reason for a refused request (6.2): a fixed error code goes to the caller and the reason to the service's log. | Code scanning findings on pull request 45 |
