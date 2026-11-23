@@ -120,6 +120,11 @@ cli/main.py ──► inspector/* ──► connectors/registry/*
 | `test_evaluate.py` | the evaluation core: outcomes, observe mode, fail modes, widening by tier, the ledger entry |
 | `test_service.py` | the decision service: signed events, idempotence, the bundle endpoint, keys |
 | `test_mock.py` | the mock gateway, and its events reaching the service |
+| `test_mcp_middleware.py` | the MCP middleware over HTTP and in process, `protect` and `remove`, events to the service, the SDK signature contract |
+| `test_onboarding.py` | `ritvo init --draft`, `apply` and `check` |
+| `test_ledger_answers.py` | Observe answers drafted from the ledger |
+| `test_demo.py` | `ritvo demo` on `examples/mcp-demo` |
+| `test_cedar_oracle.py` | `cedarpy` against the official Cedar tool (skipped unless installed) |
 | `test_boundaries.py` | the Governance OS and the enforcement side never import each other |
 | `test_cli.py` | `--version` and the help screen |
 

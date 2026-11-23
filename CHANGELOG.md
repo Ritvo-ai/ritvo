@@ -42,6 +42,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The evaluation core shared by every enforcement point, with observe mode recording what enforce mode would have decided.
 - The decision service: signed `POST /v1/events`, `GET /v1/bundles/latest` with an ETag, and `GET /v1/keys` (`ritvo/governance_os/service/`).
 - A crude mock control plane that refuses or passes calls and writes the ledger (`ritvo/mock_control_plane/`).
+- The MCP middleware for the official Python SDK: `protect(server, "ritvo.yaml")` adds it and `.remove()` undoes it. It evaluates `tools/call`, answers an ask or a deny with an error result carrying the escalation ID, and sends events to the decision service without waiting on it. Install with `pip install ritvo[mcp]`.
+- `ritvo init --draft` (complete a draft for observe mode and make the signing key), `ritvo apply` (compile, sign and write the bundle and keys), `ritvo check` (config, secrets, bundle, engine, ledger).
+- `ritvo demo` and `examples/mcp-demo`: an MCP server in observe mode with scripted calls, offline, showing what enforce mode would decide.
+- `ritvo review --draft --ledger`: drafts `record.decisions` and `record.identity` from the ledger as observed answers.
+- Supply chain controls for the Cedar engine: a hash-pinned `requirements.lock`, `pip-audit`, a CycloneDX SBOM, and a CI job that checks `cedarpy` against the official Cedar command line tool.
 - Runtime dependencies cedarpy, cryptography, FastAPI, httpx, Jinja2, keyring, PyJWT, Pydantic, PyYAML and rfc8785 (all MIT, BSD or Apache-2.0).
 - Continuous integration on Linux, macOS and Windows: lint, type check, tests, licence check, secret scan, wheel build and install test, CodeQL, and commit hygiene.
 - Release workflow: on a `v*` tag, test, build, check that the tag matches the package version, attest build provenance, and publish to PyPI by trusted publishing after approval.

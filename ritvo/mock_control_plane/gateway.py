@@ -8,16 +8,14 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 
 from ritvo.adapter_contract.messages import Message
 from ritvo.config.schema import Config
 from ritvo.enforcement.evaluate import Evaluator, ledger_event
 from ritvo.enforcement.events import ask_requested, call_denied
+from ritvo.enforcement.refusal import DEFAULT_TTL_MINUTES, ask_body, stamp
 from ritvo.ledger.store import Ledger
-
-DEFAULT_TTL_MINUTES = 15
 
 Upstream = Callable[[dict[str, Any]], Any]
 
@@ -26,10 +24,6 @@ Upstream = Callable[[dict[str, Any]], Any]
 class Response:
     status: int
     body: dict[str, Any]
-
-
-def _stamp(seconds: float) -> str:
-    return datetime.fromtimestamp(seconds, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class MockGateway:
@@ -69,7 +63,7 @@ class MockGateway:
         event_id = f"evt-{uuid.uuid4().hex}"
         result = self._evaluator.evaluate(token, tool, action, parameters)
         if result.principal is not None:
-            self._ledger.append(ledger_event(result, tool, action, boundary, event_id, _stamp(now)))
+            self._ledger.append(ledger_event(result, tool, action, boundary, event_id, stamp(now)))
         if result.action == "refuse":
             return Response(401, {"error": result.reason})
         if result.action == "ask":
@@ -83,21 +77,10 @@ class MockGateway:
                         boundary,
                         self._source,
                         f"ask-{event_id}",
-                        _stamp(now),
+                        stamp(now),
                     )
                 )
-            fingerprint = result.fingerprint or ""
-            ttl = self._ttl(tool)
-            return Response(
-                403,
-                {
-                    "error": "authority_required",
-                    "escalation_id": "esc-" + fingerprint.removeprefix("sha256:")[:8],
-                    "request_fingerprint": fingerprint,
-                    "expires_at": _stamp(now + ttl * 60),
-                    "retry": True,
-                },
-            )
+            return Response(403, ask_body(result, self._ttl(tool), now))
         if result.action == "deny":
             if self._send is not None:
                 self._send(
@@ -109,7 +92,7 @@ class MockGateway:
                         boundary,
                         self._source,
                         f"deny-{event_id}",
-                        _stamp(now),
+                        stamp(now),
                     )
                 )
             return Response(403, {"error": "denied", "reason": result.reason})

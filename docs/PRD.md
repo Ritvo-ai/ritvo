@@ -1,6 +1,6 @@
 # Ritvo — Product Requirements (PRD)
 
-Status: draft v0.16 · 23 November 2026 · Owner: SK · Licence: Apache-2.0
+Status: draft v0.17 · 24 November 2026 · Owner: SK · Licence: Apache-2.0
 
 ## 1. Summary
 
@@ -139,7 +139,7 @@ Status of phase 0:
 | Specified, not built | The report's comparison with a previous scan, PDF and redaction (phase 1); drafted answers for the Observe questions (phase 1); `mcp.no_auth`, which needs MCP introspection (phase 1) |
 | Not started | Nothing in phase 0. The interview runs as a governed agent from phase 2 |
 
-Status of phase 1: built, the foundations (adapter contract v0.2 messages and signing, ledger with `ritvo audit verify` and `export`, secrets interface and providers, `ritvo.yaml` loader). Also built: identity and the principal chain, the signed Cedar bundle and engine with its canary, the evaluation core, the decision service (events, bundle, keys) and the mock control plane. Not started: the lockfile and CI controls for the engine, MCP middleware and demo, onboarding commands, MCP introspection, `ritvo import`, inventory diff, `--pdf` and `--redact`.
+Status of phase 1: built, the foundations (adapter contract v0.2 messages and signing, ledger with `ritvo audit verify` and `export`, secrets interface and providers, `ritvo.yaml` loader). Also built: identity and the principal chain, the signed Cedar bundle and engine with its canary, the evaluation core, the decision service (events, bundle, keys) and the mock control plane. The MCP middleware on the official SDK, `ritvo init --draft`, `apply`, `check`, `ritvo demo` on `examples/mcp-demo` and the Observe answers drafted from the ledger are built, with the lockfile and the Cedar oracle in CI. The exit of phase 1 is met: `ritvo demo` runs, the tests are green, and two answers are drafted from observe-mode records. Not started: MCP introspection (`--connect`), `ritvo import`, the inventory comparison, `--pdf` and `--redact`.
 
 Where a person is still asked, by phase:
 
@@ -198,3 +198,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | draft v0.14 | 18 November 2026 | Phase 0 built: additive re-run, the `documented` basis, the interview (plain prompts, no model) and questionnaire init moved to built in the phase 0 status (section 7). What remains in phase 0's scope waits on phase 1 observe records or MCP introspection. |
 | draft v0.15 | 23 November 2026 | Phase 1 foundations built; status of phase 1 added to section 7. |
 | draft v0.16 | 23 November 2026 | Phase 1 status: policy, identity, decision service and mock built. |
+| draft v0.17 | 24 November 2026 | Phase 1 status: the middleware, onboarding commands, demo and ledger-drafted answers built. |
