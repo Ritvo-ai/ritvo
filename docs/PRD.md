@@ -1,6 +1,6 @@
 # Ritvo — Product Requirements (PRD)
 
-Status: draft v0.14 · 18 November 2026 · Owner: SK · Licence: Apache-2.0
+Status: draft v0.15 · 23 November 2026 · Owner: SK · Licence: Apache-2.0
 
 ## 1. Summary
 
@@ -139,6 +139,8 @@ Status of phase 0:
 | Specified, not built | The report's comparison with a previous scan, PDF and redaction (phase 1); drafted answers for the Observe questions (phase 1); `mcp.no_auth`, which needs MCP introspection (phase 1) |
 | Not started | Nothing in phase 0. The interview runs as a governed agent from phase 2 |
 
+Status of phase 1: built, the foundations (adapter contract v0.2 messages and signing, ledger with `ritvo audit verify` and `export`, secrets interface and providers, `ritvo.yaml` loader). Not started: identity, routing, bundles and the Cedar controls, decision service, mock control plane, MCP middleware and demo, onboarding commands, MCP introspection, `ritvo import`, inventory diff, `--pdf` and `--redact`.
+
 Where a person is still asked, by phase:
 
 | Phase | What machines do | What a person still does |
@@ -194,3 +196,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | draft v0.12 | 30 October 2026 | The draft `ritvo.yaml`, authority matrix and gap report from `ritvo diagnose` moved from not started to built (SPEC 8.5) in the phase 0 status (section 7). |
 | draft v0.13 | 12 November 2026 | Drafted answers (SPEC 8.3) moved to built for `agents.inventory`, `agents.owner` and `agents.reach`; four Derive questions moved to Ask because an inventory holds no source for them. The 7, 5 and 5 split is now 3 Derive, 5 Observe and 9 Ask until more sources exist. |
 | draft v0.14 | 18 November 2026 | Phase 0 built: additive re-run, the `documented` basis, the interview (plain prompts, no model) and questionnaire init moved to built in the phase 0 status (section 7). What remains in phase 0's scope waits on phase 1 observe records or MCP introspection. |
+| draft v0.15 | 23 November 2026 | Phase 1 foundations built; status of phase 1 added to section 7. |

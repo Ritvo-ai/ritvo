@@ -1,0 +1,53 @@
+# Fictional organisation. No real keys, tokens or addresses.
+mode: observe
+profile: local
+enforcement:
+  - id: demo-mcp
+    type: mcp_middleware
+    boundary: mcp
+identity:
+  issuers:
+    - name: corp-idp
+      jwks_url: secret://corp-idp/jwks
+      audience: demo-mcp
+  claims_map: { subject: sub, actor: act.sub, scopes: scope }
+  unattended: require_owner
+secrets:
+  backend: keyring
+ledger:
+  path: ritvo-ledger.db
+agents:
+  - id: acme.research
+    owner: alice
+    owner_team: research
+    mode: attended
+tools:
+  - id: broker.order
+    match: { method: POST, path: /orders/* }
+    tier: high
+    approval_ttl_minutes: 15
+    approvals:
+      parameter: order_value
+      currency: EUR
+      bands:
+        - up_to: 10000
+          ladder: [desk_head, head_of_trading, cro]
+        - up_to: 50000
+          ladder: [head_of_trading, cro]
+        - ladder: [cro]
+bindings:
+  - agent: acme.research
+    tool: broker.order
+    decision: ask
+    limits: { max_order_value: 50000 }
+    owner_team: risk
+policy_sections:
+  - id: trading
+    signoff: [risk, security]
+roles:
+  policy_author: alice
+  escalation_reviewer: bob
+  cool_off_minutes: 60
+ladders:
+  high: [category_owner, finance]
+  timeout_minutes: 30

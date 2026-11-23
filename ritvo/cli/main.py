@@ -69,8 +69,14 @@ from ritvo.inspector.owners import OverlayError, apply_overlay, read_overlay
 from ritvo.inspector.registry import EXPORTS, FileResult, inspect_registry, parse_source
 from ritvo.inspector.report import sha256_of
 from ritvo.inspector.report import write_report as write_inspect_report
+from ritvo.ledger.store import DEFAULT_PATH as LEDGER_PATH
+from ritvo.ledger.store import Ledger, LedgerError
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
+audit_app = typer.Typer(
+    no_args_is_help=True, add_completion=False, help="Check and export the ledger."
+)
+app.add_typer(audit_app, name="audit")
 
 
 def _show_version(value: bool) -> None:
@@ -820,3 +826,53 @@ def inspect(
         report_file = source.with_name("report.html")
         write_inspect_report(load_inventory(source), sha256_of(source), report_file)
         typer.echo(f"Wrote {report_file}")
+
+
+LedgerOption = Annotated[
+    Path,
+    typer.Option("--ledger", dir_okay=False, help="The ledger file."),
+]
+
+
+def _open_ledger(path: Path) -> Ledger:
+    if not path.is_file():
+        _fail(f"{path} does not exist")
+    try:
+        return Ledger(path)
+    except LedgerError as exc:
+        _fail(str(exc))
+
+
+@audit_app.command("verify")
+def audit_verify(ledger: LedgerOption = LEDGER_PATH) -> None:
+    """Recompute every hash and check the chain."""
+    store = _open_ledger(ledger)
+    result = store.verify()
+    store.close()
+    if not result.ok:
+        typer.echo(f"FAILED at entry {result.seq}: {result.problem}", err=True)
+        typer.echo(f"{result.entries} entries before it are intact.", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"OK: {result.entries} entries")
+
+
+@audit_app.command("export")
+def audit_export(
+    ledger: LedgerOption = LEDGER_PATH,
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", dir_okay=False, help="Write JSONL here, never over a file."),
+    ] = None,
+) -> None:
+    """Write every entry as one line of canonical JSON."""
+    if out is not None and out.exists():
+        _fail(f"{out} already exists")
+    store = _open_ledger(ledger)
+    lines = list(store.export())
+    store.close()
+    text = "".join(line + "\n" for line in lines)
+    if out is None:
+        typer.echo(text, nl=False)
+        return
+    out.write_text(text, encoding="utf-8", newline="\n")
+    typer.echo(f"Wrote {len(lines)} entries to {out}")
