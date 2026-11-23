@@ -94,16 +94,10 @@ def _check(config: Config, draft: bool) -> list[str]:
     return problems
 
 
-def load_config(path: Path, draft: bool = False) -> Config:
-    """Read and validate a ritvo.yaml. `draft` accepts a file that leaves things out."""
-    try:
-        data = yaml.safe_load(path.read_bytes().decode("utf-8"))
-    except UnicodeDecodeError:
-        raise ConfigError([f"{path.name} is not UTF-8 text"]) from None
-    except yaml.YAMLError:
-        raise ConfigError([f"{path.name} is not valid YAML"]) from None
+def parse_config(data: Any, draft: bool = False) -> Config:
+    """Validate a config already read as data. `draft` accepts a file that leaves things out."""
     if not isinstance(data, dict):
-        raise ConfigError([f"{path.name} must be a YAML mapping"])
+        raise ConfigError(["the config must be a YAML mapping"])
     problems: list[str] = []
     _plain_secrets(data, "", problems)
     try:
@@ -118,3 +112,16 @@ def load_config(path: Path, draft: bool = False) -> Config:
     if problems:
         raise ConfigError(problems)
     return config
+
+
+def load_config(path: Path, draft: bool = False) -> Config:
+    """Read and validate a ritvo.yaml. `draft` accepts a file that leaves things out."""
+    try:
+        data = yaml.safe_load(path.read_bytes().decode("utf-8"))
+    except UnicodeDecodeError:
+        raise ConfigError([f"{path.name} is not UTF-8 text"]) from None
+    except yaml.YAMLError:
+        raise ConfigError([f"{path.name} is not valid YAML"]) from None
+    if not isinstance(data, dict):
+        raise ConfigError([f"{path.name} must be a YAML mapping"])
+    return parse_config(data, draft)

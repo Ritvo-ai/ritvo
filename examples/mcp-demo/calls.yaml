@@ -1,0 +1,9 @@
+# The scripted calls of `ritvo demo`. An agent acting for a user is attended; with no user it is
+# unattended.
+calls:
+  - { agent: acme.research, user: u-1842, scope: "orders:read", tool: broker.quote, arguments: { symbol: ACME } }
+  - { agent: acme.research, user: u-1842, scope: "orders:read orders:write", tool: broker.order, arguments: { symbol: ACME, order_value: 1200 } }
+  - { agent: acme.research, user: u-1842, scope: "orders:read orders:write", tool: broker.order, arguments: { symbol: ACME, order_value: 90000 } }
+  - { agent: acme.research, user: u-1842, scope: "orders:read", tool: ledger.adjust, arguments: { account: "ops-1", amount: 40 } }
+  - { agent: acme.reporting, scope: "orders:read", tool: broker.quote, arguments: { symbol: ACME } }
+  - { agent: acme.reporting, scope: "orders:read", tool: broker.order, arguments: { symbol: ACME, order_value: 10 } }

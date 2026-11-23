@@ -41,6 +41,8 @@ mypy
 pytest
 ```
 
+If you change the dependencies in `pyproject.toml`, rebuild the hash-pinned lockfile with the command in the header of `requirements.lock` (`uv pip compile pyproject.toml --extra mcp --generate-hashes --universal --python-version 3.12 -o requirements.lock`); CI fails if it is out of date.
+
 CI runs the same checks on Linux, macOS and Windows, plus a licence check on runtime dependencies, a secret scan, a wheel build and install test, CodeQL and the commit hygiene check.
 
 ## Platform rules

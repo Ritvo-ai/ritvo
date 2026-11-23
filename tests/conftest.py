@@ -217,3 +217,14 @@ def stack(tmp_path: Path) -> Stack:
 
 def fixed_time() -> float:
     return time.time()
+
+
+def write_enforcement_files(stack: Stack, directory: Path) -> Path:
+    """The files an enforcement point reads, as `ritvo apply` writes them. Returns the config."""
+    from ritvo.adapter_contract.bundle import encode_signed_bundle
+
+    (directory / "ritvo-bundle.json").write_bytes(encode_signed_bundle(stack.signed))
+    (directory / "ritvo-keys.json").write_text(
+        json.dumps(jwks_of(private_key(stack.seed).public_key())), encoding="utf-8"
+    )
+    return directory / "ritvo.yaml"

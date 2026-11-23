@@ -1,0 +1,55 @@
+# Fictional organisation for `ritvo demo`. No real keys, tokens or addresses.
+mode: observe
+profile: local
+enforcement:
+  - id: demo-mcp
+    type: mcp_middleware
+    boundary: mcp
+identity:
+  issuers:
+    - name: demo-idp
+      issuer: https://idp.example.com
+      jwks_url: file://__JWKS_URL__     # the demo replaces this with a throwaway key set
+      audience: demo-mcp
+  claims_map: { subject: sub, actor: act.sub, scopes: scope }
+  unattended: require_owner
+secrets:
+  backend: env_file                     # development only; the demo uses a throwaway file
+ledger:
+  path: ritvo-ledger.db
+agents:
+  - id: acme.research
+    owner: alice
+    owner_team: research
+    mode: attended
+  - id: acme.reporting
+    owner: bob
+    owner_team: ops
+    mode: unattended
+tools:
+  - id: broker.quote
+    tier: low
+  - id: broker.order
+    tier: high
+    approval_ttl_minutes: 15
+  - id: ledger.adjust
+    tier: medium
+bindings:
+  - agent: acme.research
+    tool: broker.quote
+    decision: allow
+  - agent: acme.research
+    tool: broker.order
+    decision: ask
+    limits: { max_order_value: 50000 }
+    owner_team: risk
+  - agent: acme.research
+    tool: ledger.adjust
+    decision: allow
+roles:
+  policy_author: alice
+  escalation_reviewer: bob
+  cool_off_minutes: 60
+ladders:
+  high: [escalation_reviewer, policy_author]
+  timeout_minutes: 30

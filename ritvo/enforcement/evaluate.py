@@ -76,9 +76,13 @@ class Evaluator:
         )
 
     def evaluate(
-        self, token: str, tool: str, action: str, parameters: dict[str, Any] | None
+        self, token: str | None, tool: str, action: str, parameters: dict[str, Any] | None
     ) -> Result:
         params = parameters or {}
+        if token is None:
+            if self.mode == "enforce":
+                return Result("refuse", None, 401, "missing_token", self.mode)
+            return Result("allow", None, 200, "no_token", self.mode, flags=("no_token",))
         try:
             validated = self.validator.validate(token)
             principal, flags = build_principal(validated, self.boundary, self.owner_of)

@@ -10,6 +10,12 @@ from typing import Annotated, NoReturn
 import typer
 
 from ritvo import __version__
+from ritvo.cli.onboarding import (
+    OnboardingError,
+    apply_config,
+    check_config,
+    init_config,
+)
 from ritvo.connectors.registry.common import RegistryError
 from ritvo.diagnostic.doa.draft import build_draft, draft_path, write_draft
 from ritvo.diagnostic.doa.draft import read_draft as read_doa_draft
@@ -136,6 +142,15 @@ def review(
             "has not changed.",
         ),
     ] = None,
+    ledger: Annotated[
+        Path | None,
+        typer.Option(
+            "--ledger",
+            exists=True,
+            dir_okay=False,
+            help="With --draft: also draft the Observe answers the ledger can give.",
+        ),
+    ] = None,
     interview: Annotated[
         bool,
         typer.Option(
@@ -150,8 +165,10 @@ def review(
         _fail("--draft and --interview cannot be combined")
     if previous is not None and not draft:
         _fail("--previous needs --draft")
+    if ledger is not None and not draft:
+        _fail("--ledger needs --draft")
     if draft:
-        _draft_answers(answers, out, previous)
+        _draft_answers(answers, out, previous, ledger)
         return
     if interview:
         _interview(answers, out)
@@ -176,14 +193,17 @@ def review(
     typer.echo(f"Wrote {target}")
 
 
-def _draft_answers(inventory: Path, out: Path | None, previous: Path | None) -> None:
+def _draft_answers(
+    inventory: Path, out: Path | None, previous: Path | None, ledger: Path | None = None
+) -> None:
     target = out if out is not None else inventory.parent / "answers.draft.yaml"
-    if _same_file(target, inventory) or (previous is not None and _same_file(target, previous)):
+    inputs = [inventory, *(path for path in (previous, ledger) if path is not None)]
+    if any(_same_file(target, path) for path in inputs):
         _fail(f"--out {target} is an input file; choose another path")
     if target.exists():
         _fail(f"{target} already exists")
     try:
-        draft = draft_from_file(inventory, previous)
+        draft = draft_from_file(inventory, previous, ledger)
     except (InventoryError, ReviewError) as exc:
         _fail(str(exc))
     target.write_text(draft.text, encoding="utf-8", newline="\n")
@@ -237,17 +257,68 @@ def init(
         ),
     ] = False,
     out: Annotated[
-        Path,
-        typer.Option("--out", file_okay=False, help="The folder to write to."),
-    ] = Path("ritvo-init"),
+        Path | None,
+        typer.Option(
+            "--out",
+            help="With --questionnaire the folder to write to (default ritvo-init); "
+            "otherwise the ritvo.yaml to write (default ritvo.yaml).",
+        ),
+    ] = None,
     no_input: Annotated[
         bool,
         typer.Option("--no-input", help="Ask nothing; read questionnaire.yaml in the folder."),
     ] = False,
+    draft: Annotated[
+        Path | None,
+        typer.Option(
+            "--draft", exists=True, dir_okay=False, help="A draft ritvo.yaml to complete."
+        ),
+    ] = None,
+    issuer: Annotated[
+        str | None, typer.Option("--issuer", help="The iss claim of your tokens.")
+    ] = None,
+    audience: Annotated[
+        str | None, typer.Option("--audience", help="The audience of your server.")
+    ] = None,
+    jwks_url: Annotated[
+        str | None,
+        typer.Option("--jwks-url", help="secret://, https:// or file:// key set address."),
+    ] = None,
+    name: Annotated[str, typer.Option("--name", help="The issuer's name.")] = "idp",
+    secrets_backend: Annotated[
+        str, typer.Option("--secrets", help="keyring, env_file or memory.")
+    ] = "keyring",
+    enforcement_id: Annotated[str, typer.Option("--enforcement-id")] = "mcp-server",
 ) -> None:
-    """Draft a first ritvo.yaml from typed answers. Reads and writes files only."""
+    """Draft a first ritvo.yaml, or complete a draft for observe mode. Files only."""
+    if draft is not None:
+        if questionnaire:
+            _fail("--questionnaire and --draft cannot be combined")
+        if issuer is None or audience is None or jwks_url is None:
+            _fail("--draft needs --issuer, --audience and --jwks-url")
+        try:
+            done = init_config(
+                draft,
+                out or Path("ritvo.yaml"),
+                issuer,
+                audience,
+                jwks_url,
+                name,
+                enforcement_id,
+                secrets_backend,
+            )
+        except OnboardingError as exc:
+            _problems(tuple(exc.problems))
+            typer.echo("Nothing was written.", err=True)
+            raise typer.Exit(1) from None
+        typer.echo(f"Wrote {done.out}")
+        action = "Made" if done.key_made else "Found"
+        typer.echo(f"{action} the bundle signing key, key ID {done.key_id}")
+        typer.echo("Next: ritvo apply, then ritvo check")
+        return
     if not questionnaire:
-        _fail("only ritvo init --questionnaire is built so far")
+        _fail("use ritvo init --questionnaire, or ritvo init --draft <file> with its options")
+    out = out or Path("ritvo-init")
     if out.exists() and not out.is_dir():
         _fail(f"{out} is not a folder")
     answers_file = out / QUESTIONNAIRE_FILE
@@ -876,3 +947,78 @@ def audit_export(
         return
     out.write_text(text, encoding="utf-8", newline="\n")
     typer.echo(f"Wrote {len(lines)} entries to {out}")
+
+
+@app.command()
+def apply(
+    config: Annotated[
+        Path, typer.Option("--config", dir_okay=False, help="The ritvo.yaml.")
+    ] = Path("ritvo.yaml"),
+) -> None:
+    """Compile and sign a bundle and write it with the keys it needs."""
+    try:
+        done = apply_config(config)
+    except OnboardingError as exc:
+        _problems(tuple(exc.problems))
+        typer.echo("Nothing was written.", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Applied policy version {done.version}, signed by {done.key_id}")
+    typer.echo(f"Wrote {done.bundle_path} and {done.keys_path}")
+    typer.echo("Note: there is no sign-off flow yet; this bundle was signed locally.")
+
+
+@app.command()
+def check(
+    config: Annotated[
+        Path, typer.Option("--config", dir_okay=False, help="The ritvo.yaml.")
+    ] = Path("ritvo.yaml"),
+    online: Annotated[
+        bool, typer.Option("--online", help="Also reach the issuers and the service.")
+    ] = False,
+) -> None:
+    """Check the config, secrets, bundle, engine and ledger. Never prints a secret."""
+    results = check_config(config, online)
+    for item in results:
+        typer.echo(f"{item.status:<5} {item.name}: {item.detail}")
+    if any(item.status == "FAIL" for item in results):
+        raise typer.Exit(1)
+
+
+@app.command()
+def demo(
+    folder: Annotated[Path, typer.Argument(exists=True, file_okay=False, help="The demo folder.")],
+    keep: Annotated[bool, typer.Option("--keep", help="Keep the temporary workspace.")] = False,
+) -> None:
+    """Run a demo MCP server in observe mode with scripted calls. Offline and throwaway."""
+    from ritvo.demo.runner import DemoError, run_demo
+
+    try:
+        result = run_demo(folder, keep)
+    except DemoError as exc:
+        _fail(str(exc))
+    typer.echo("Observe mode: every call below passed; the last column is what enforce would do.\n")
+    width = max(len(o.tool) for o in result.outcomes)
+    for outcome in result.outcomes:
+        who = (
+            f"{outcome.agent} for {outcome.user}"
+            if outcome.user
+            else f"{outcome.agent} (unattended)"
+        )
+        if outcome.passed is None:
+            verdict = f"refused at the door ({outcome.reason})"
+        else:
+            verdict = f"passed, enforce would {outcome.would_decide}" + (
+                f" [{outcome.reason}]" if outcome.reason not in (None, outcome.would_decide) else ""
+            )
+        typer.echo(f"  {outcome.tool:<{width}}  {who:<38} {verdict}")
+    state = "verifies" if result.verified else "DOES NOT VERIFY"
+    other = result.entries - result.decisions
+    typer.echo(
+        f"\nLedger: {result.entries} entries ({result.decisions} decisions, "
+        f"{other} policy change), {state}."
+    )
+    typer.echo("\nWhat ritvo review --draft would draft from this record:")
+    for question, answer, note in result.answers:
+        typer.echo(f"  {question}: {answer}  ({note})")
+    if result.workspace is not None:
+        typer.echo(f"Workspace kept at {result.workspace}")

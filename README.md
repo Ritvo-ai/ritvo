@@ -40,6 +40,24 @@ pip install -e .
 ritvo --version
 ```
 
+### Try the MCP middleware
+
+An MCP server on the official Python SDK takes Ritvo with one line, and loses it with one:
+
+```python
+protection = protect(server, "ritvo.yaml")  # observe mode: nothing is blocked
+protection.remove()  # back to how it was
+```
+
+To watch it work, offline and in about two seconds, from a clone:
+
+```sh
+pip install -e ".[mcp]"
+ritvo demo examples/mcp-demo
+```
+
+It runs a small MCP server with scripted calls, shows for each one what *enforce* mode would have decided (allow, ask or deny, and why), checks the ledger, and prints the gap-review answers that the record supports. The identity provider, keys and tokens are made for the run and thrown away. See [docs/SPEC.md](docs/SPEC.md) sections 5.12, 6.5 and 6.6, and `examples/mcp-demo/`. To use it on your own server: `ritvo diagnose` or `ritvo init --questionnaire` gives a draft `ritvo.yaml`; `ritvo init --draft ... --issuer ... --audience ... --jwks-url ...` completes it; `ritvo apply` signs a bundle; `ritvo check` checks the setup.
+
 ### Authority gap review
 
 Answer 17 questions about how your organisation governs its agents, then score them:
