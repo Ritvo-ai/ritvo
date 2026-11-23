@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.20-draft · 18 November 2026 · Licence: Apache-2.0
+Version 0.21-draft · 23 November 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -113,6 +113,15 @@ Approval bands (`tools[].approvals`): a tool MAY carry value bands that name who
 
 Roles, agent mode and drafts. `roles` maps a role name to a list of person IDs; a single ID is read as a list of one. `agents[].mode` is `attended`, `unattended` or `both`. A draft written by `ritvo diagnose` (section 8.5) may hold a `null` `tier` for a tool whose tier is not known; `ritvo check` rejects it in a file that is to be used, and such a tool is treated as needing a decision, never as `low`.
 
+Loading. `ritvo.yaml` is read as YAML into the shape above and validated before anything uses it. An unknown field is an error. An error names the field path and never echoes a value, except an ID shortened to 40 characters. A file is complete or a draft.
+
+- A complete file (the default when it is loaded) has `mode`, `profile`, at least one `enforcement` entry, `identity`, `secrets`, `roles` and `ladders`. `agents`, `tools`, `bindings` and `policy_sections` default to empty. Every tool has a `tier` and every agent has `owner` when `mode` is `enforce`.
+- A draft (what `ritvo diagnose` and `ritvo init --questionnaire` write) may leave out any section, and may hold a `null` `tier`, `owner` or `owner_team`.
+- Both: IDs follow the rule of section 8.2 and are unique within `enforcement`, `agents` and `tools`. A binding names an agent and a tool that are in the file. `decision` is `allow`, `ask` or `deny`. `limits` maps names to numbers. `tools[].match` has a `method` and a `path`. `approval_ttl_minutes` is a whole number of at least 1. Approval bands follow the rule above: ascending `up_to`, only the last without one, at least one band. `roles` maps a role name to a list of person IDs (a single ID is a list of one) and may hold `cool_off_minutes`, a whole number of at least 1. `ladders` maps `low`, `medium` and `high` to lists of role names and may hold `timeout_minutes`, a whole number of at least 1. Whether every role in a ladder has a holder is a check of `ritvo check`, not of loading.
+- Secrets. A key whose name contains `token`, `secret`, `password`, `passwd`, `api_key`, `apikey` or `private_key`, ignoring case and except a key ending `_ref`, with a non-empty string value that does not start with `secret://` is an error. The error names the key path, never the value. `identity.issuers[].jwks_url` is a `secret://` reference or an `https://` URL.
+- Claims maps. `claims_map` maps `subject`, `actor` and `scopes`, and optionally `actor_platform`, each to a dotted path into the token's claims, for example `act.sub`; no segment is empty. `identity.claims_map` is the default for every issuer, and `issuers[].claims_map` replaces it for that issuer. Every issuer must have one, from one place or the other.
+- `ledger.path` is optional: where the ledger (section 4.7) is kept, `ritvo-ledger.db` by default.
+
 ### 4.2 Principal
 
 ```yaml
@@ -147,7 +156,9 @@ Evaluation order for a request after the principal is built:
 
 ### 4.4 Fingerprint
 
-`fingerprint = SHA-256(JCS(accountable_human, actor.id, tool, action, parameters))`, where JCS is RFC 8785 JSON canonicalisation. The same agent acting for two users MUST produce two fingerprints.
+`fingerprint = "sha256:" + hex(SHA-256(JCS(input)))`, where JCS is RFC 8785 JSON canonicalisation (section 4.9) and `input` is the object `{"accountable_human": {"id", "issuer"}, "actor": <actor.id>, "tool": <tool>, "action": <action>, "parameters": <parameters>}`. The accountable human is the subject, `{"id": subject.id, "issuer": subject.issuer}`, when there is one, and otherwise the owner, `{"id": owner, "issuer": null}`. If there is neither, it is `{"id": null, "issuer": null}` and the request is flagged `no_accountable_human`. Absent parameters are `{}`. The same agent acting for two users MUST produce two fingerprints.
+
+`parameter_hash` is `"sha256:" + hex(SHA-256(JCS(parameters)))`. `principal_digest` is the same over the principal object of section 4.2, `token_ref` values included.
 
 ### 4.5 Grant
 
@@ -187,9 +198,13 @@ An enforcement point MUST verify the signature and MUST refuse a bundle with a l
 
 ### 4.7 Ledger event
 
-Fields: `event_id`, `timestamp`, `principal` (subject, actor, chain, mode), `boundary`, `tool`, `action`, `parameter_fingerprint`, `policy_version`, `binding_id`, `decision`, `triggering_rule`, `approver`, `approval_or_grant_ref`, `outcome`, `latency_ms`, `prev_hash`, `hash`.
+Fields, all required, `null` where they do not apply: `event_id`, `timestamp`, `type`, `principal` (subject, actor, chain, mode; null for an event with no request, such as a policy change), `boundary`, `tool`, `action`, `parameter_fingerprint`, `policy_version`, `binding_id`, `mode` (`observe` or `enforce`), `decision`, `would_decide` (the decision enforce mode would have made, in observe mode), `triggering_rule`, `flags`, `approver`, `approval_or_grant_ref`, `outcome`, `latency_ms`, `prev_hash`, `hash`.
 
-`hash = sha256(prev_hash || JCS(event_without_hash))`. The store MUST reject UPDATE and DELETE (SQLite triggers). The ledger is tamper-evident, not signed. Secrets and personal data MUST be redacted before writing.
+- `type` is one of `decision`, `escalation`, `resolution`, `grant`, `policy_change`, `key` or `admin`. `decision` and `would_decide` are `allow`, `deny` or `ask`, or `approved`, `rejected` or `expired` for a resolution. `flags` is a list of short IDs, for example `scope_widened` or `no_accountable_human`. `parameter_fingerprint` is the fingerprint of section 4.4; the ledger holds no parameters.
+- `hash` is the 64 lower-case hex characters of `SHA-256(prev_hash || JCS(entry_without_hash))`, where `prev_hash` is the previous entry's `hash` as its 64 lower-case hex characters, written as ASCII, and `entry_without_hash` is the event with `prev_hash` set. The first entry has a `prev_hash` of 64 zeros.
+- Storage is one SQLite table with an increasing `seq`, a unique `event_id` and the entry as canonical JSON. The store MUST reject UPDATE and DELETE with triggers. Appending an `event_id` that is already in the ledger writes nothing and returns the entry already there, so a retried message is idempotent. Appends are serialised, so two writers never share a `prev_hash`.
+- Redaction runs before hashing. A mapping key whose name contains `token`, `secret`, `password`, `passwd`, `authorization`, `api_key`, `apikey`, `cookie` or `private_key`, other than one ending `_ref`, has its value replaced by `[redacted]`. A string that looks like a JWT (`eyJ` and two more base64url segments), that starts with `Bearer `, or that contains a registered secret value (section 4.10) of 4 or more characters has that part replaced by `[redacted]`. An email address in a string is replaced by `[email]`. Redaction is a second line of defence: the schema holds no tokens and no parameters to begin with.
+- `ritvo audit verify` recomputes every hash, and checks that `seq` has no gaps, that each `prev_hash` is the entry before it, and that each row's `event_id` matches its entry. It exits 0 and prints the number of entries, or exits non-zero and prints the first `seq` that fails and why. `ritvo audit export` writes each entry's canonical JSON, one per line (JSONL), to `--out` or the terminal, and never over a file. Both read `--ledger <file>`, `ritvo-ledger.db` by default. The ledger is tamper-evident, not signed: someone who can rewrite the whole file can rewrite the chain, which is what the anchor of phase 4 is for. Secrets and personal data MUST be redacted before writing.
 
 ### 4.8 Inventory
 
@@ -310,6 +325,19 @@ Fields. Every field listed is present; `null` means not known, never a safe defa
 
 A reader MUST reject a file with another `schema_version`, a missing field or an unknown field, and name the field. A file with `schema_version` 0 was written before `manifest.owner_overlays` existed, and one with `schema_version` 1 before tools found in code (`tools[].source`) existed. Each is rejected with a message to run the inspector again. An MCP tool MUST have `server` and both hashes and no `sdk`, `platform_ref` or `calls`; a code tool MUST have no `server` and MUST have `sdk`, `platform_ref` and at least one call. An inventory MUST NOT contain secret values, raw config text, tokens, prompts, tool descriptions or environment variable values.
 
+### 4.9 Canonical JSON and hashes
+
+Every hash and signature that covers JSON uses RFC 8785 (JCS) canonical JSON, produced by the `rfc8785` library. Values are JSON types only. NaN and infinity are refused. A hash written as text is `sha256:` and 64 lower-case hex characters; the hash chain of section 4.7 is the one exception and is bare hex.
+
+### 4.10 Secrets
+
+Config refers to a secret as `secret://<path>`, never by value. A path is one or more segments separated by `/`; a segment is 1 to 64 characters from `a-z`, `0-9`, `.`, `_` and `-`, and not `.` or `..`. The interface has three operations: `get(path)`, `set(path, value)` and `delete(path)`.
+
+- `get` of a path that is not set fails with `SecretNotFound`. Any other failure to read is `SecretUnavailable`. A caller treats both as a failure and the high tier fails closed (section 5.6). `delete` of a path that is not set does nothing.
+- Providers: `keyring` stores each value in the operating system's keyring under the service name `ritvo` and the path as the user name. `env_file` reads and writes a dotenv-style file of `NAME=value` lines, where a path becomes a name by upper-casing it, replacing each run of characters outside `A-Z` and `0-9` with `_`, and joining segments with `__`. `memory` keeps values in the process. `env_file` and `memory` are for development and tests: each logs a warning when it is created and says so in `describe()`. All three pass one shared contract test suite. CI never touches a real keyring.
+- Access is logged by path, never by value. A value that is read is registered with the redactor (section 4.7), which then removes it from log lines and ledger text. Registered values shorter than 4 characters are not registered.
+- Not built in this phase: `vault_kv`, cloud secret managers and KMS. The interface is ready for them.
+
 ## 5. Behaviour
 
 ### 5.1 Request evaluation at the middleware
@@ -394,6 +422,17 @@ retry: true
 
 Over MCP tool results the same body is returned as an error result (verify the exact error shape against the MCP SDK in use).
 
+### 5.9 Policy engine controls
+
+The enforcement point evaluates a Cedar bundle with `cedarpy`, a community binding of the Cedar engine (decision of 23 November 2026). It runs inside the client's own process, so it is in the trust path. These controls limit what a fault in it can do:
+
+1. The dependency is pinned by version and hash in the lockfile that ships with the library, and CI runs `pip-audit` and writes an SBOM.
+2. At load, the library evaluates a fixed canary set of requests whose answers are known, with at least one must-deny and one must-ask for each tier. Any other answer makes the engine unusable: every request is then treated as an engine error.
+3. A CI job checks the test corpus against the official Cedar command line tool as an oracle. A difference fails the build.
+4. A request for a `high` tool is never allowed by the engine alone: if the engine says allow, the result is ask unless a valid grant is presented. Our own code enforces this, not the policy.
+5. An engine error is handled by the fail modes of section 5.6, so the high tier fails closed.
+6. A binding of the Cedar crate that we build ourselves is reconsidered before the first real adapter (phase 4).
+
 ## 6. Interfaces
 
 ### 6.1 Adapter contract v0.2
@@ -413,6 +452,33 @@ Governance OS to enforcement point:
 
 Both directions: `ledger.entry`, joined to any gateway-side record by `event_id` and fingerprint.
 
+Envelope. Every message is one JSON object with these fields, and `extra` fields are refused:
+
+| Field | Meaning |
+| --- | --- |
+| `contract_version` | `"0.2"`. A message with another version is refused and the error names the supported one |
+| `type` | The message name, such as `ask.requested` |
+| `event_id` | 1 to 128 characters from `A-Za-z0-9._:-`. Messages with the same `event_id` are the same message: a receiver that has accepted it answers success again and does nothing |
+| `timestamp` | RFC 3339 time in UTC, ending `Z` |
+| `source` | The ID of the sender: an enforcement point ID, or `governance-os` |
+
+Shared types. A `principal` is the object of section 4.2; `mode` is `attended` or `unattended`, `owner` MUST be set when `mode` is `unattended`, and `token_ref` is 1 to 128 characters from `A-Za-z0-9:_-`, so a token, which holds `.`, cannot be written there. `boundary` is `edge`, `mcp` or `data`. A fingerprint or hash is `sha256:` and 64 lower-case hex characters.
+
+| Message | Fields besides the envelope |
+| --- | --- |
+| `ask.requested` | `request_fingerprint`, `principal`, `boundary`, `tool`, `action`, `parameter_hash`, `parameters` (an object, or null when only the hash is sent), `body_ref` (string or null), `policy_version` (integer or null), `trace_id` (string or null), `linked_to` (the fingerprint of the first request, when the parameters or tool changed; else null) |
+| `call.denied` | `principal`, `boundary`, `tool`, `action`, `parameters` (object or null), `binding_id` (string or null), `policy_version` (integer or null), `reason` (at most 500 characters) |
+| `grant.used` | `request_fingerprint`, `grant_id`, `outcome` (`accepted` or `refused`) |
+| `request.executed` | `request_fingerprint`, `grant_id` (string or null), `outcome` (`success` or `error`), `latency_ms` (integer or null) |
+| `request.expired` | `request_fingerprint`, `reason` |
+| `inventory.reported` | `inventory`: an inventory fragment of section 4.8, checked by the inspector's schema when it is built in phase 2 |
+| `limit.near` | `principal`, `tool`, `limit` (name), `limit_value` and `observed` (numbers) |
+| `policy.published` | `policy_version` (integer), `bundle` (the object of section 4.6), `ask_trigger_rules` (list of objects), `author`, `approvers` (list), `effective_date` (RFC 3339) |
+| `decision.resolved` | `request_fingerprint`, `outcome` (`approve`, `reject` or `expire`), `approver` (string or null), `rationale_ref` (string or null), `grant` (the compact JWS of section 4.5; required for `approve`, null otherwise) |
+| `ledger.entry` | `entry`: a ledger entry of section 4.7 |
+
+Signing. Messages travel over HTTP with the headers of section 6.2. The signature is hex `HMAC-SHA256(key, method + "\n" + path + "\n" + timestamp + "\n" + hex(SHA-256(body)))`, where `method` is upper case, `path` is the request path with its query, `timestamp` is the `Ritvo-Timestamp` value, and `body` is the bytes sent (empty for a GET). A request is refused when the signature differs, compared in constant time, or `Ritvo-Timestamp` is more than 5 minutes from the receiver's clock. Bodies are written as canonical JSON (section 4.9).
+
 A gateway adapter is supportable only if it can: identify each agent and, when present, the user; evaluate a compiled bundle locally or route a non-allow to the decision service; accept a signed, fingerprint-bound, expiring grant, or hold and release a request; accept policy from outside with a version; and emit events for asks, denials and outcomes.
 
 ### 6.2 Decision service HTTP API
@@ -425,7 +491,7 @@ A gateway adapter is supportable only if it can: identify each agent and, when p
 | `GET /v1/asks/{id}` | Read an ask | Approver session |
 | `POST /v1/asks/{id}/resolve` | Approve or reject | Approver session with passkey |
 
-Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Signature` (HMAC-SHA256 over method, path, timestamp and body hash). Requests with more than five minutes of clock skew MUST be refused. Presenting a grant: header `Ritvo-Grant: <jws>`, or request metadata over MCP (verify).
+Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Signature` (HMAC-SHA256 over method, path, timestamp and body hash). Requests with more than five minutes of clock skew MUST be refused. Presenting a grant: over MCP, in the request's `_meta` under the key `ai.ritvo/grant`, which works on every transport including stdio; over plain HTTP, the header `Ritvo-Grant: <jws>`.
 
 ### 6.3 CLI
 
@@ -452,7 +518,7 @@ Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Si
 | `ritvo check` | Validate config, secrets, identity and the authority diff |
 | `ritvo apply` | Apply a signed-off policy version |
 | `ritvo approve <id>` | Resolve an ask |
-| `ritvo audit verify`, `ritvo audit export` | Recheck the hash chain; write JSONL |
+| `ritvo audit verify [--ledger <file>]`, `ritvo audit export [--ledger <file>] [--out <file>]` | Recheck the hash chain; write JSONL (section 4.7) |
 | `ritvo demo` | Run the demo MCP server end to end |
 
 ## 7. Inspector
@@ -1229,8 +1295,8 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 
 ## 12. Open items (verify)
 
-- The Python package for Cedar evaluation, and whether it expresses a delegation chain and exposes analysis for the authority diff.
-- The MCP SDK hook points for middleware, the exact error shape for a refused tool call, and how a grant rides on a request.
+- Cedar: `cedarpy` is chosen, with the controls of section 5.9 (decision of 23 November 2026). Whether it expresses a delegation chain through entity parents and request context is still to be proved by a test in phase 1. Cedar's own analysis is not exposed to Python, so the authority diff is worked out from the structure of `ritvo.yaml` (section 5.5).
+- The MCP SDK: the official Python SDK is used first (decision of 23 November 2026). Its middleware (`server.middleware`, an `async (ctx, call_next)` function) is marked provisional by the SDK, so the version is pinned and a contract test fails if the signature changes. An ask is refused by returning a result with `is_error` set, not by raising `MCPError`, because the model must be able to read it. The grant rides in `_meta` (section 6.2). Still to check against the SDK in phase 1: where its authorization layer hands the validated token to the middleware.
 - Per identity provider: which claims an exchanged token carries for subject, actor and scopes.
 - Whether any candidate gateway or cloud policy engine accepts an external decision hook or a signed grant.
 - Launch stages of the cloud platform identity features used in the documentation.
@@ -1314,3 +1380,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.18-draft | 12 November 2026 | Drafted answers built (8.3) and the build status brought up to date (14). No rule changed. | Pull request for drafted answers |
 | 0.19-draft | 18 November 2026 | Phase 0 close-out defined. Additive re-run (8.3): a per-question digest in the drafted evidence and `--previous`, carrying answers whose source is unchanged. The `documented` evidence reference settled (8.1). Interview (8.6): plain prompts for the questions still not answered, recorded as `asserted` in a new file. Questionnaire init (8.7): a full first draft from typed answers, with defaults per tier and a saved `questionnaire.yaml`. CLI rows (6.3) and open items (12) updated. | Decisions on the phase 0 close-out: full draft from typed answers, interview without a model, per-question digest |
 | 0.20-draft | 18 November 2026 | Phase 0 close-out built (8.1, 8.3, 8.6, 8.7) and the build status brought up to date (14). The finding `tool.destructive_unowned` was built earlier and is now listed as built; `mcp.no_auth` waits for MCP introspection. No rule changed. | Pull request for the phase 0 close-out |
+| 0.21-draft | 23 November 2026 | Phase 1 foundations defined. Canonical JSON and hashes (4.9). Secrets: reference grammar, interface, providers, logging and the redactor (4.10). `ritvo.yaml` loading rules and the secrets rule (4.1). Fingerprint, `parameter_hash` and `principal_digest` made exact (4.4). Ledger entry fields completed with `type`, `mode`, `would_decide` and `flags`; storage, redaction, verification and the audit commands (4.7). Policy engine controls for `cedarpy` (5.9). Adapter contract envelope, message fields and request signing (6.1); the grant carried in `_meta` (6.2). Open items for Cedar and the MCP SDK settled (12). | Decisions of 23 November 2026: `cedarpy` with controls, the official MCP SDK first, four pull requests for phase 1 |
