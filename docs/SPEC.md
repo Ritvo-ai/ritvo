@@ -1,6 +1,6 @@
 # Ritvo — Technical Specification
 
-Version 0.25-draft · 23 November 2026 · Licence: Apache-2.0
+Version 0.26-draft · 24 November 2026 · Licence: Apache-2.0
 
 The words MUST, SHOULD and MAY are used as in RFC 2119. Items marked (verify) are unconfirmed and must be checked before they are relied on. Where this spec and any other project document differ, this spec wins; raise the difference rather than guess. Changes to this spec are recorded in Appendix A, which is append-only.
 
@@ -446,7 +446,9 @@ expires_at: 2026-10-13T10:57:00Z
 retry: true
 ```
 
-Over MCP tool results the same body is returned as an error result (verify the exact error shape against the MCP SDK in use).
+Over MCP tool results the same body is returned as a tool result with `isError` true, the body as both its `structuredContent` and, as JSON text, its only content block. A result is used, not a JSON-RPC error, so the model can read it and the caller can retry (checked against the official Python SDK, version 2.3).
+
+`escalation_id` is `esc-` and the first 8 hex characters of the request fingerprint, so a retry of the same request has the same ID. `expires_at` is the time of the refusal plus the tool's `approval_ttl_minutes`, 15 minutes if the tool has none. A denial has the body `{"error": "denied", "reason": <code>}`. A token that is refused has the body `{"error": "invalid_token", "reason": <code>}`, with a code from section 5.10, or `missing_token`.
 
 ### 5.9 Policy engine controls
 
@@ -459,7 +461,7 @@ The enforcement point evaluates a Cedar bundle with `cedarpy`, a community bindi
 5. An engine error is handled by the fail modes of section 5.6, so the high tier fails closed.
 6. A binding of the Cedar crate that we build ourselves is reconsidered before the first real adapter (phase 4).
 
-Controls 2, 4 and 5 are built with the engine. Control 1 (the lockfile with hashes, `pip-audit` and the SBOM) and control 3 (the official Cedar command line tool as an oracle in CI) are built with the middleware, and until then they are not in place. In use, the engine answers `Allow` or `Deny`; it answers `NoDecision` without raising when, for example, a number in the context is not a whole number, so any answer but those two is an engine error.
+Controls 2, 4 and 5 are built with the engine. Control 1 is `requirements.lock`, every runtime dependency pinned with hashes for Python 3.12 and rebuilt with `uv pip compile pyproject.toml --generate-hashes`; CI checks that it matches `pyproject.toml`, runs `pip-audit` on it with hashes required, and writes a CycloneDX SBOM as a build artifact. Control 3 is a CI job that installs the official `cedar` command line tool, pinned to the engine's version, and runs the canary and the compiled demo bundle through both it and `cedarpy`; a difference in any answer fails the job. Locally the oracle test is skipped when the tool is not installed. In use, the engine answers `Allow` or `Deny`; it answers `NoDecision` without raising when, for example, a number in the context is not a whole number, so any answer but those two is an engine error.
 
 ### 5.10 Identity
 
@@ -489,12 +491,30 @@ Building the principal. The claims are read through the issuer's `claims_map` (s
 
 One function serves every enforcement point: given a token, a tool, an action and parameters, it returns the outcome. It knows nothing of MCP or of a gateway, so each adapter is a thin layer over it. It does this in order:
 
-1. Validate the token and build the principal (section 5.10). A failure is refused, in either mode.
+1. Validate the token and build the principal (section 5.10). A failure is refused, in either mode. A request with no token at all is refused with `missing_token` in `enforce` mode. In `observe` mode it passes and is written to the ledger with no principal and the flag `no_token`, so that a server which has no tokens yet (a stdio server, for example) can be watched.
 2. Match the tool: the tool IDs of the bundle. If none matches, the tool is unknown (section 4.3, step 1).
 3. Evaluate the bundle (section 4.3) and apply the `tier` trigger (section 5.3), then the `scope_widened` handling (section 5.10). The result is the `would_decide`: `allow`, `deny` or `ask`.
 4. Compute the fingerprint (section 4.4). In `observe` mode the outcome is `allow` whatever `would_decide` is, and a refusal for a token failure is the only refusal. In `enforce` mode the outcome is `would_decide`.
 5. If the engine had an error, the fail mode of the tool's tier applies (section 5.6): `open` gives `allow`, otherwise `deny` with the reason `engine_error`; in `observe` mode the request passes either way.
 6. Return the outcome, the `would_decide`, the principal, the fingerprint, the `binding_id` if one matched, the flags, the triggers that fired, the policy version and a reason. The caller writes the ledger entry and, on an ask or deny, the event of section 6.1.
+
+### 5.12 The MCP middleware
+
+The middleware is the first enforcement point (adapter for the official MCP Python SDK, `mcp` 2.x, an optional extra `ritvo[mcp]`). Adopting it is one call on a server the client already owns, and removing that call undoes it:
+
+```python
+from ritvo.enforcement.mcp_middleware import protect
+protection = protect(server, "ritvo.yaml")   # server is an MCPServer or a low-level Server
+protection.remove()                          # undoes it
+```
+
+- `protect` loads a complete `ritvo.yaml` (section 4.1), opens the secrets provider it names, builds a token validator from `identity`, a bundle store from `bundle.path` and `bundle.keys`, the ledger from `ledger.path` and the evaluation core (section 5.11), and appends one function to the server's `middleware` list (section 12). It changes nothing else about the server. It returns a handle: `remove()` takes the function out again and closes the ledger; `refresh()` fetches the bundle from the decision service now.
+- Only `tools/call` is evaluated; every other method passes. The tool ID is the tool's name and the action is `tools/call`. The arguments are the parameters.
+- The token is the one the SDK's own authorization validated and kept, read with `get_access_token()`; the server keeps its own token verifier, and the middleware validates the token again against `identity` (audience, issuer, expiry) as in section 5.10. A server with no verifier has no token, and section 5.11 says what happens. `ritvo.enforcement.mcp_middleware.token_verifier(path)` is a verifier built from the same `ritvo.yaml`, for a server that has none.
+- A call that is allowed runs. A call that is an ask or a deny, or whose token is refused, is answered by the middleware with the result of section 5.8 and the tool does not run; the call is not passed on. Whatever happens, one entry is written to the ledger (section 4.7) for each evaluated call that has a principal. In `enforce` mode an ask sends `ask.requested` and a deny sends `call.denied` to the decision service when `decision_service` is set; a service that does not answer is logged, never waited on, and never changes the outcome.
+- A grant in the request's `_meta` is not read in phase 1.
+- The bundle is read at start from `bundle.path`. When it is stale or missing and a decision service is set, the middleware fetches `/v1/bundles/latest` (section 6.2), at most once every 30 seconds; a bundle that does not verify or is older than the one held is refused and logged. If it cannot get a current bundle, section 5.6 decides.
+- The SDK's middleware list is marked provisional, so the SDK is pinned to `mcp>=2.3,<3` and a test fails if the middleware signature changes.
 
 ## 6. Interfaces
 
@@ -565,7 +585,7 @@ In phase 1 the service has the first three endpoints; asks are phase 2. The serv
 | Command | Purpose |
 | --- | --- |
 | `ritvo review <answers.yaml>` | One-page authority gap result |
-| `ritvo review --draft <inventory.json> [--previous <answers.yaml>] [--out <file>]` | Draft an answers file from an inventory; never written over a file, never scored until a person removes `draft: true`; with `--previous`, carry answers forward whose source is unchanged (section 8.3) |
+| `ritvo review --draft <inventory.json> [--ledger <file>] [--previous <answers.yaml>] [--out <file>]` | Draft an answers file from an inventory; never written over a file, never scored until a person removes `draft: true`; with `--previous`, carry answers forward whose source is unchanged (section 8.3) |
 | `ritvo review --interview <answers.yaml> [--out <file>]` | Ask the questions that are still not answered and record each as `asserted` in a new file (section 8.6) |
 | `ritvo diagnose` | Draft `ritvo.yaml`, authority matrix, gap report from files |
 | `ritvo diagnose <dir> [--doa <file>] [--out <dir>]` | Write the draft `ritvo.yaml`, `authority-matrix.csv`, `gap-report.html` and `diagnosis.json` from valid intake files (section 8.5) |
@@ -581,12 +601,12 @@ In phase 1 the service has the first three endpoints; asks are phase 2. The serv
 | `ritvo import <inventory.json>` | Create a draft change request from an inventory |
 | `ritvo import-doa <matrix.csv> [--intake <dir>] [--no-input]` | Read a delegation-of-authority matrix exported as CSV, confirm how it is read, and write draft approval bands and roles (section 8.4) |
 | `ritvo init --questionnaire [--out <dir>] [--no-input]` | Ask a short fixed set of questions and write a first draft `ritvo.yaml` with defaults per tier (section 8.7) |
-| `ritvo init` | Build `ritvo.yaml` (phase 1) |
-| `ritvo check` | Validate config, secrets, identity and the authority diff |
-| `ritvo apply` | Apply a signed-off policy version |
+| `ritvo init --draft <file> --issuer <iss> --audience <aud> --jwks-url <url> [--name <name>] [--secrets <backend>] [--out <file>]` | Complete a draft `ritvo.yaml` for observe mode and make the bundle signing key if there is none (section 6.5) |
+| `ritvo check [--config <file>] [--online]` | Check the config, secrets, bundle, engine and ledger (section 6.5) |
+| `ritvo apply [--config <file>]` | Compile, sign and write a bundle and the keys it needs (section 6.5). The sign-off flow is phase 3 |
 | `ritvo approve <id>` | Resolve an ask |
 | `ritvo audit verify [--ledger <file>]`, `ritvo audit export [--ledger <file>] [--out <file>]` | Recheck the hash chain; write JSONL (section 4.7) |
-| `ritvo demo` | Run the demo MCP server end to end |
+| `ritvo demo <folder>` | Run a demo MCP server in observe mode with scripted calls, and show the result (section 6.6) |
 
 ### 6.4 The mock control plane
 
@@ -594,6 +614,20 @@ The mock control plane is a crude test harness that behaves like an edge gateway
 
 
 Enforcement-point requests carry `Ritvo-Key-Id`, `Ritvo-Timestamp` and `Ritvo-Signature` (HMAC-SHA256 over method, path, timestamp and body hash). Requests with more than five minutes of clock skew MUST be refused. Presenting a grant: over MCP, in the request's `_meta` under the key `ai.ritvo/grant`, which works on every transport including stdio; over plain HTTP, the header `Ritvo-Grant: <jws>`.
+
+### 6.5 Onboarding commands
+
+All four read and write files in the current folder by default, never print a secret value, and never write over a file that exists unless this section says so.
+
+`ritvo init --draft <file>`: the draft is a `ritvo.yaml` written by `ritvo diagnose` or `ritvo init --questionnaire` (section 8.5). The command adds `mode: observe`, `profile: local`, one `enforcement` entry (`id` from `--enforcement-id`, default `mcp-server`, type `mcp_middleware`, boundary `mcp`), `identity` from `--issuer` (the `iss` claim), `--audience` and `--jwks-url`, with `--name` (default `idp`) as the issuer's name, the default `claims_map` `{subject: sub, actor: act.sub, scopes: scope}` and `unattended: require_owner`, `secrets.backend` from `--secrets` (`keyring`, the default, `env_file` or `memory`), and, when the draft has none, `ladders: {high: [escalation_reviewer], timeout_minutes: 30}`. Anything the draft already has is kept. The result is written to `--out`, `ritvo.yaml` by default, and is refused if it exists. It is checked as a complete file (section 4.1) before it is written; a draft that cannot be completed, for example a tool with no tier, is refused with every problem listed, and nothing is written. If the secrets provider holds no signing key at `secret://ritvo/bundle-signing-key`, a new one is made and stored, and the terminal prints its key ID and never the key. A signing key that cannot be stored stops the command.
+
+`ritvo apply`: compiles the config (section 4.6), signs the bundle with the signing key, and writes `bundle.path` and `bundle.keys` (section 4.1). The `policy_version` is one more than the version of the bundle already at `bundle.path` if it verifies with the keys already at `bundle.keys`, otherwise 1. `bundle.keys` keeps the keys it had and adds the key of this signature, so older bundles still verify. Both files are written whole, a temporary file first. The command writes one ledger entry of type `policy_change` with the `policy_version`, `outcome` `applied` and no approver, and prints the version and the key ID. It refuses a config that is not complete and valid. In phase 1 there is no sign-off flow: the bundle is signed locally, and the command says so; the sign-off flow of section 5.5 is phase 3.
+
+`ritvo check`: prints one line for each check, `ok`, `warn` or `FAIL`, and exits non-zero if any is `FAIL`. The checks are: the config loads as a complete file; the secrets provider (a provider that is for development is a `warn`); every `secret://` reference in the config resolves, by name only; the signing key is present and a valid seed; `bundle.keys` has at least one key and the bundle at `bundle.path` verifies with them (a missing bundle is a `FAIL`, a stale one a `warn`); the bundle was compiled from the current config (a `warn` that names `ritvo apply` if the config has changed since); the Cedar engine loads the bundle and passes its canary; the ledger verifies. With `--online` it also fetches each issuer's key set and the decision service's `/v1/keys`. The authority diff is added in phase 3.
+
+### 6.6 The demo
+
+`ritvo demo <folder>` runs a folder that holds `server.py`, `ritvo.yaml` and `calls.yaml` in a temporary workspace, offline. It makes a throwaway identity provider (an Ed25519 key and a key set file), stores a signing key with the `env_file` provider in the workspace, runs `ritvo apply`, loads `server.py` (which builds an MCP server and calls `protect`), and sends each call of `calls.yaml` to the server's streamable HTTP application in process, with a token it signs. A call is `agent`, optionally `user`, `scope`, `tool` and `arguments`. The folder's `ritvo.yaml` names its key set `file://__JWKS_URL__`, which the demo replaces. The demo runs in `observe` mode: it prints, for each call, whether it passed, what enforce mode would have decided and why, then the number of ledger entries and that the ledger verifies, then the answers `ritvo review --draft` would draft from them (section 8.3). It deletes the workspace unless `--keep` is given. It is a demonstration and its tokens and keys are throwaway; nothing in it is a credential. `examples/mcp-demo` is the demo folder.
 
 ## 7. Inspector
 
@@ -1045,11 +1079,15 @@ The inspector comes first. Where an inventory exists, the answers file is drafte
 | Route | Questions |
 | --- | --- |
 | Derive | `agents.inventory`, `agents.owner`, `agents.reach` |
-| Observe | `agents.new_tools`, `approval.self`, `escalation.waiting`, `record.decisions`, `record.identity` |
+| Observe | `record.decisions`, `record.identity` (from the ledger, below); `agents.new_tools`, `approval.self`, `escalation.waiting` (they need ask-path records, phase 2) |
 | Ask | `approval.named`, `approval.context`, `escalation.path`, `escalation.stop`, `record.tamper`, `escalation.expiry`, `policy_change.second_person`, `policy_change.owners`, `policy_change.versioning` |
 
 - Checked against the inventory (section 4.8), an inventory holds no approval expiry, no policy change data and no version of the rules, so `escalation.expiry`, `policy_change.second_person`, `policy_change.owners` and `policy_change.versioning` are routed to a person until a source for them exists. They moved from Derive to Ask for that reason. An intake file or an observe-mode record may later supply them.
-- The sources for the Observe questions are an open item (section 12). Until they exist, those five questions stay `not_answered` in the draft.
+- The Observe questions that the ledger can answer are drafted when `--ledger <file>` is given. The ledger is read, never written. It MUST verify (section 4.7), otherwise the command stops. The other three Observe questions stay `not_answered` until the ask path has records (phase 2).
+- Each is drafted with `basis.source: observed` and `basis.evidence: <ledger file name> sha256:<head hash> question sha256:<digest>`, where the head hash is the `hash` of the last entry, and the digest is the SHA-256 of the canonical JSON of the counts the answer used. An entry with a `principal` and a `mode` is an observed decision.
+- `record.identity`: no observed decisions is `unknown`. If every observed decision has an actor ID, and every attended one also a subject, it is `both`; if any lacks an actor, `no`. A request with no accountable human at all is not a reason for `no`: the question is whether the record shows both when both exist. Its note says how many decisions, and how many attended and unattended.
+- `record.decisions`: no observed decisions is `unknown`. Otherwise `partly`, never `yes`: the ledger holds who, when and why for each decision it saw, but a decision with no principal (a refused token) is not kept, and no approval has been recorded yet, so it cannot show that every approval and refusal is. A person who knows better changes it. Its note counts the decisions and those with a `would_decide` of `ask` or `deny`.
+- An answer drafted from the ledger is carried by `--previous` under the same rule as one drafted from the inventory: only if the digest is unchanged, which a ledger that has grown will not be.
 
 The command. `ritvo review --draft <inventory.json> [--out <file>]` reads one inventory and writes a draft answers file. It reads that one file, makes no network call and holds no credential.
 
@@ -1370,13 +1408,13 @@ S01 to S10 apply to a control plane that holds and releases. S11 to S21 apply to
 ## 12. Open items (verify)
 
 - Cedar: `cedarpy` is chosen, with the controls of section 5.9 (decision of 23 November 2026). Whether it expresses a delegation chain through entity parents and request context is still to be proved by a test in phase 1. Cedar's own analysis is not exposed to Python, so the authority diff is worked out from the structure of `ritvo.yaml` (section 5.5).
-- The MCP SDK: the official Python SDK is used first (decision of 23 November 2026). Its middleware (`server.middleware`, an `async (ctx, call_next)` function) is marked provisional by the SDK, so the version is pinned and a contract test fails if the signature changes. An ask is refused by returning a result with `is_error` set, not by raising `MCPError`, because the model must be able to read it. The grant rides in `_meta` (section 6.2). Still to check against the SDK in phase 1: where its authorization layer hands the validated token to the middleware.
+- The MCP SDK: the official Python SDK is used first (decision of 23 November 2026). Its middleware (`server.middleware`, an `async (ctx, call_next)` function) is marked provisional by the SDK, so the version is pinned and a contract test fails if the signature changes. An ask is refused by returning a result with `is_error` set, not by raising `MCPError`, because the model must be able to read it. The grant rides in `_meta` (section 6.2). The validated token reaches the middleware through `get_access_token()` over streamable HTTP, checked against `mcp` 2.3 (section 5.12); an in-process or stdio connection has no token.
 - Per identity provider: which claims an exchanged token carries for subject, actor and scopes.
 - Whether any candidate gateway or cloud policy engine accepts an external decision hook or a signed grant.
 - Launch stages of the cloud platform identity features used in the documentation.
 - Owner overlay: defined in section 7.4 (decision D8). No longer open.
 - Help and errors for registry exports: defined in section 7.3, Help and remedies. No longer open.
-- The command that drafts an answers file from an inventory: defined in section 8.3 (`ritvo review --draft`). No longer open. The sources for the Observe questions in section 8.3 remain open.
+- The command that drafts an answers file from an inventory: defined in section 8.3 (`ritvo review --draft`). No longer open. The sources for the Observe questions: the ledger gives `record.decisions` and `record.identity` (section 8.3); `agents.new_tools`, `approval.self` and `escalation.waiting` wait for the ask path (phase 2).
 - Config files with comments and trailing commas (section 7.1). VS Code documents `mcp.json` as accepting them; the reader accepts strict JSON only, so such a file is listed as unreadable.
 - How an evidence reference to a document is recorded: defined in section 8.1, Provenance. No longer open. The cap for answers that are not `observed` or `derived` is defined in section 8.1, scoring rule 4.
 - The migration of `review_version: 0` files: defined in section 8.1. No longer open.
@@ -1459,3 +1497,4 @@ Append-only. A change adds a row; earlier rows are not edited.
 | 0.23-draft | 23 November 2026 | Policy, identity and the evaluation core defined (phase 1, second part). The bundle (4.6): four Cedar policy sets, entities, ask-trigger rules, a detached Ed25519 signature and the compile rules. Evaluation with Cedar (4.3): the four sets in order, the request, entities and context, and how limits and parameters are read. Config (4.1): `bundle.path`, `decision_service`, `fail_open_low`, `identity.jwks_leeway_seconds`. The `tier` trigger built, `novelty` listed and disabled until precedent (5.3). Controls built and not yet built (5.9). Identity (5.10): token validation and its codes, JWKS handling, the principal, the chain and scope widening handled by tier. The evaluation core (5.11). The decision service's events, bundle and key endpoints (6.2). The mock control plane (6.4). | Decisions: Cedar as four predicate sets, a scope-widening request is handled by tier, novelty waits for the precedent log |
 | 0.24-draft | 23 November 2026 | Policy, identity and the evaluation core built (4.3, 4.6, 5.9, 5.10, 5.11, 6.2, 6.4) and the build status brought up to date (14). Corrections found while building: time claims are checked against the validator's own clock and `iat` is not checked; a key of the wrong type for the algorithm is a bad signature; `jwks_url` may be `file://` for development and an issuer has an `issuer` (the `iss` claim); `bundle.keys` names the trusted signing keys. | Pull request for policy, identity and the decision service |
 | 0.25-draft | 23 November 2026 | The decision service no longer returns the reason for a refused request (6.2): a fixed error code goes to the caller and the reason to the service's log. | Code scanning findings on pull request 45 |
+| 0.26-draft | 24 November 2026 | The MCP middleware, the onboarding commands and the demo defined (phase 1, last part). The refusal result and escalation ID (5.8). A request with no token (5.11). The middleware: one call to protect a server, one to remove it, what it evaluates, how it refuses, how it gets its bundle (5.12). `ritvo init`, `apply` and `check` (6.5) and `ritvo demo` (6.6). The Observe answers the ledger can give, `record.identity` and `record.decisions` (8.3). Controls 1 and 3 for the Cedar engine made exact (5.9). The open item on the SDK's token closed (12). | Decisions: `ritvo init` completes a draft, the demo runs offline in observe mode, the lockfile is built with `uv` |
