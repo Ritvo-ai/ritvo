@@ -110,6 +110,11 @@ cli/main.py ──► inspector/* ──► connectors/registry/*
 | `test_inspect_report.py` | the inspect report: priorities, unknowns, control mapping, no remote resources, contrast, `--report` |
 | `test_owner_overlay.py` | the owner overlay and its option rules |
 | `test_check_attribution.py` | the commit-message hygiene script in `.github/scripts/` |
+| `test_contract.py` | canonical JSON, the principal, fingerprints, every contract message, request signing |
+| `test_ledger.py` | the hash chain, append-only triggers, tampering found by `audit verify`, redaction, `ritvo audit` |
+| `test_secrets.py` | one contract run against the keyring, env_file and memory providers; references; logged access |
+| `test_config.py` | `ritvo.yaml` loading rules, drafts, secrets as references |
+| `test_boundaries.py` | the Governance OS and the enforcement side never import each other |
 | `test_cli.py` | `--version` and the help screen |
 
 Fixtures: `tests/fixtures/config/` (one file per client and location), `registry/` (valid and invalid exports per platform), `doa/` (wide and long matrices with `tools.csv` and `people.csv`). Code-scan tests write their small projects into a temporary folder instead of keeping source fixtures.

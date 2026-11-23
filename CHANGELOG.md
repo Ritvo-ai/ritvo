@@ -31,7 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `ritvo review --draft ... --previous <answers.yaml>`: additive re-run. Carries an answer forward only if the part of the inventory it rests on is unchanged (a per-question digest in the drafted evidence); other answers are carried as they are.
 - `ritvo review --interview <answers.yaml>`: asks the questions still open with plain prompts (no model, no network) and records each as `asserted` in a new file.
 - `ritvo init --questionnaire`: asks a short fixed set of questions, saves `questionnaire.yaml`, and writes a first draft `ritvo.yaml` with defaults per tier. `--no-input` drafts from a saved questionnaire. Example in `examples/init/`.
-- Runtime dependencies Jinja2, Pydantic and PyYAML.
+- Adapter contract v0.2: the message envelope and ten message types, canonical JSON (RFC 8785), fingerprints and request signing with HMAC (`ritvo/adapter_contract/`).
+- The ledger: append-only SQLite with a hash chain, redaction before writing, `ritvo audit verify` and `ritvo audit export`. Tampering with a row fails verification.
+- Secrets: the `secret://` reference, a get/set/delete interface, keyring, env_file and memory providers with one shared contract test suite, logged access by name, and a redactor.
+- The `ritvo.yaml` loader with complete and draft files, and `examples/trading-demo/ritvo.yaml`.
+- A test that the Governance OS and the enforcement side never import each other.
+- Runtime dependencies Jinja2, keyring, Pydantic, PyYAML and rfc8785 (all MIT, BSD or Apache-2.0).
 - Continuous integration on Linux, macOS and Windows: lint, type check, tests, licence check, secret scan, wheel build and install test, CodeQL, and commit hygiene.
 - Release workflow: on a `v*` tag, test, build, check that the tag matches the package version, attest build provenance, and publish to PyPI by trusted publishing after approval.
 
