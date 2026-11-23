@@ -297,3 +297,11 @@ def test_dig_and_widened() -> None:
     assert dig({"a": {"b": 1}}, "a.b") == 1
     assert dig({"a": 1}, "a.b") is None and dig({}, "a") is None
     assert not widened([])
+
+
+def test_a_file_url_works_with_a_windows_drive_path() -> None:
+    """`file:///C:/keys/jwks.json` has the path `/C:/keys/jwks.json`; the drive must be kept."""
+    from urllib.request import url2pathname
+
+    assert url2pathname("/C:/keys/jwks.json").replace("\\", "/").endswith("keys/jwks.json")
+    assert url2pathname("/keys/a%20b.json").endswith("a b.json")

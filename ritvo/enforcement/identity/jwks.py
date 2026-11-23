@@ -5,7 +5,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 import httpx
 import jwt
@@ -24,7 +25,7 @@ def fetch_url(url: str) -> bytes:
     parsed = urlparse(url)
     if parsed.scheme == "file":
         try:
-            return Path(unquote(parsed.path)).read_bytes()
+            return Path(url2pathname(parsed.path)).read_bytes()
         except OSError:
             raise JwksError("the key set file could not be read") from None
     if parsed.scheme != "https":
