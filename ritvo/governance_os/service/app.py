@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -14,6 +15,8 @@ from ritvo.adapter_contract.messages import ContractError, decode
 from ritvo.adapter_contract.signing import SignatureError, verify
 from ritvo.governance_os.service.events import OUTBOUND, to_ledger_event
 from ritvo.ledger.store import Ledger
+
+log = logging.getLogger("ritvo.service")
 
 
 def create_app(
@@ -35,7 +38,9 @@ def create_app(
         try:
             verify(request.method, signed_path(request), body, request.headers, keys, clock())
         except SignatureError as exc:
-            return body, JSONResponse({"error": str(exc)}, status_code=401)
+            # The reason is for the operator's log, not for the caller.
+            log.warning("request refused: %s", exc)
+            return body, JSONResponse({"error": "invalid_signature"}, status_code=401)
         return body, None
 
     @app.post("/v1/events")
@@ -46,7 +51,8 @@ def create_app(
         try:
             message = decode(body)
         except ContractError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
+            log.warning("message refused: %s", exc)
+            return JSONResponse({"error": "invalid_message"}, status_code=400)
         if message.type in OUTBOUND:
             return JSONResponse(
                 {"error": f"{message.type} is sent by the Governance OS, not to it"},

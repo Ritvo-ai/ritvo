@@ -167,7 +167,8 @@ def test_parameters_are_not_kept(service: Service) -> None:
 
 def test_a_request_that_is_not_signed_correctly_is_refused(service: Service) -> None:
     body = canonical(MESSAGES["grant.used"])
-    assert service.client.post("/v1/events", content=body).status_code == 401
+    unsigned = service.client.post("/v1/events", content=body)
+    assert (unsigned.status_code, unsigned.json()) == (401, {"error": "invalid_signature"})
     assert service.post(MESSAGES["grant.used"], key=b"another-key").status_code == 401
     assert service.post(MESSAGES["grant.used"], key_id="ep-9").status_code == 401
     assert service.post(MESSAGES["grant.used"], now=NOW - 400).status_code == 401
@@ -218,7 +219,21 @@ def test_a_message_the_governance_os_sends_is_refused(service: Service) -> None:
 )
 def test_a_body_that_is_not_a_valid_message_is_refused(service: Service, body: bytes) -> None:
     headers = sign("POST", "/v1/events", body, "ep-1", KEY, NOW)
-    assert service.client.post("/v1/events", content=body, headers=headers).status_code == 400
+    response = service.client.post("/v1/events", content=body, headers=headers)
+    assert (response.status_code, response.json()) == (400, {"error": "invalid_message"})
+
+
+def test_the_reason_is_logged_and_not_sent(
+    service: Service, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    body = b'{"contract_version": "0.1"}'
+    headers = sign("POST", "/v1/events", body, "ep-1", KEY, NOW)
+    with caplog.at_level(logging.WARNING, logger="ritvo.service"):
+        response = service.client.post("/v1/events", content=body, headers=headers)
+    assert "contract_version" not in response.text and "0.2" not in response.text
+    assert "message refused" in caplog.text and "0.2" in caplog.text
 
 
 # Bundles and keys
