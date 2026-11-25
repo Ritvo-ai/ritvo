@@ -43,7 +43,7 @@ dev = [
   "mcp>=2.3,<3",
   "mypy>=2.3",
   "pytest>=9.0",
-  "ruff==0.17.3",
+  "ruff==0.17.4",
   "types-pyyaml>=6.0.12",
 ]
 
